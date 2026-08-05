@@ -1,6 +1,9 @@
 import asyncio
+import json
 import os
 import re
+import subprocess
+import sys
 
 import requests
 from bs4 import BeautifulSoup
@@ -13,6 +16,8 @@ UA = (
 STATES = {"VIC", "NSW", "QLD", "WA", "SA", "NT", "TAS", "ACT"}
 
 BROWSER_STATES = {"VIC", "NSW", "WA", "SA", "NT", "TAS", "ACT"}
+
+UC_STATES = {"VIC"}
 
 _FIELDS = {
     "vin": r"\b(?:VIN|Vehicle Identification Number|Chassis\s*(?:number)?)\b[:\s]*([A-Z0-9]{4,17})",
@@ -119,7 +124,10 @@ def _extract_text(text):
 _NOT_FOUND_PHRASES = ("registration not found", "no registration details", "no vehicle registration",
                       "not currently registered", "registration number not found", "no record of this",
                       "cannot be found", "is not registered", "no registration found", "not registered",
-                      "no vehicles match", "must enter a valid registration", "no matches found")
+                      "no vehicles match", "must enter a valid registration", "no matches found",
+                      "no results found", "does not exist", "not recognised", "not recognized",
+                      "no vehicle found", "no vehicles found", "not currently assigned",
+                      "no matching registration", "no matching", "no results")
 
 
 def _looks_like_not_found(text):
@@ -262,8 +270,33 @@ def _browser_enabled():
 
 
 async def _run_browser(plate, state, first_name, last_name):
-    from browser import browser_lookup
-    return await browser_lookup(plate, state, first_name, last_name)
+    # Playwright work runs in a subprocess: fresh process = reliable timeouts,
+    # whereas in-process Playwright inside uvicorn's event loop hangs on native timeouts.
+    cmd = [sys.executable, os.path.join(os.path.dirname(__file__), "runner.py"), plate, state]
+    if first_name:
+        cmd.append(first_name)
+    if last_name:
+        cmd.append(last_name)
+    try:
+        cp = await asyncio.to_thread(
+            subprocess.run, cmd, stdout=subprocess.PIPE, stderr=None, text=True, timeout=140)
+    except subprocess.TimeoutExpired as e:
+        partial = (e.stdout or "")[-300:] if isinstance(e.stdout, str) else \
+            (e.stdout or b"").decode(errors="replace")[-300:]
+        raise UpstreamError(f"{state}: lookup timed out (worker: {partial})")
+    stdout = (cp.stdout or "").strip()
+    try:
+        data = json.loads(stdout.splitlines()[-1])
+    except Exception:
+        raise UpstreamError(f"{state}: browser worker failed: {(cp.stderr or stdout)[:200]}")
+    if data.get("ok"):
+        return data["result"]
+    kind = data.get("kind")
+    if kind == "notfound":
+        raise NotFound(plate)
+    if kind == "blocked":
+        raise UpstreamBlocked(data.get("message") or f"{state}: blocked")
+    raise UpstreamError(data.get("message") or f"{state}: failed")
 
 
 def _uc_enabled():
@@ -271,7 +304,7 @@ def _uc_enabled():
 
 
 async def lookup(plate, state, first_name=None, last_name=None):
-    if state == "VIC" and _uc_enabled():
+    if state in UC_STATES and _uc_enabled():
         try:
             from undetected import uc_lookup
             result = await asyncio.wait_for(
@@ -284,16 +317,9 @@ async def lookup(plate, state, first_name=None, last_name=None):
             result.update({"plate": plate, "state": state})
             return result
     if state in BROWSER_STATES and _browser_enabled():
-        try:
-            result = await asyncio.wait_for(
-                _run_browser(plate, state, first_name, last_name), timeout=170)
-        except ImportError:
-            result = None
-        except asyncio.TimeoutError:
-            raise UpstreamError(f"{state}: lookup timed out")
-        if result is not None:
-            result.update({"plate": plate, "state": state})
-            return result
+        result = await _run_browser(plate, state, first_name, last_name)
+        result.update({"plate": plate, "state": state})
+        return result
     provider = PROVIDERS[state]
     result = await asyncio.to_thread(provider, plate)
     result.update({"plate": plate, "state": state})

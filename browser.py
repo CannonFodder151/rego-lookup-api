@@ -1,13 +1,11 @@
 import asyncio
-import os
-import re
+import sys
 import time
 
 from playwright.async_api import async_playwright, TimeoutError as PWTimeout
-from playwright_stealth import Stealth
 
 from providers import (NotFound, UpstreamBlocked, UpstreamError, _extract_result,
-                       _looks_like_not_found, UA)
+                       _looks_like_not_found)
 
 BROWSER_TIMEOUT = 45000
 RESULT_TIMEOUT = 30000
@@ -16,40 +14,13 @@ _PLATE_HINTS = ("plate", "rego", "registration", "vehicle number", "number plate
 
 ENTRY = {
     "VIC": "https://www.vicroads.vic.gov.au/registration/buy-sell-or-transfer-a-vehicle/check-vehicle-registration",
-    "NSW": "https://www.service.nsw.gov.au/transaction/check-a-vehicle-registration",
+    "NSW": "https://check-registration.service.nsw.gov.au/frc",
     "SA": "https://account.ezyreg.sa.gov.au/account/check-registration.htm",
     "NT": "https://nt.gov.au/driving/rego/existing-nt-registration/rego-check",
     "TAS": "https://transport.stgro-2780.saas.squiz.cloud/rego-status/search",
     "WA": "https://online.transport.wa.gov.au/webExternal/registration",
-    "ACT": "https://www.accesscanberra.act.gov.au/app/answers/detail/a_id/1594/~/check-vehicle-registration",
+    "ACT": "https://rego.act.gov.au/regosoawicket/public/reg/FindRegistrationPage?0",
 }
-
-
-def _fsr_base():
-    return (os.getenv("FLARESOLVERR_URL") or "").strip().rstrip("/") or None
-
-
-def _fsr_prewarm(url):
-    base = _fsr_base()
-    if not base:
-        return UA, []
-    try:
-        import requests
-        r = requests.post(base + "/v1", json={
-            "cmd": "request.get", "url": url, "maxTimeout": 30000}, timeout=45)
-        data = r.json()
-        if data.get("status") != "ok":
-            return UA, []
-        sol = data["solution"]
-        cookies = []
-        for c in sol.get("cookies", []):
-            domain = (c.get("domain") or "").lstrip(".")
-            if domain:
-                cookies.append({"name": c["name"], "value": c["value"],
-                                "domain": domain, "path": c.get("path", "/")})
-        return sol.get("userAgent") or UA, cookies
-    except Exception:
-        return UA, []
 
 
 async def _is_plate_input(inp):
@@ -64,8 +35,8 @@ async def _is_plate_input(inp):
 
 def _is_challenge(text):
     t = text.lower()
-    for p in ("just a moment", "enable javascript", "security verification", "you are not a bot",
-              "checking your browser", "cloudflare", "challenge"):
+    for p in ("just a moment", "performing security verification", "you are not a bot",
+              "enable javascript and cookies"):
         if p in t:
             return True
     return False
@@ -134,22 +105,33 @@ async def _vic(page, plate, first, last):
 
 async def _nsw(page, plate, first, last):
     await page.goto(ENTRY["NSW"], wait_until="domcontentloaded", timeout=BROWSER_TIMEOUT)
+    await asyncio.sleep(2)
     try:
-        link = page.get_by_text("Check online", exact=False).first
-        await link.wait_for(state="visible", timeout=15000)
-        await link.click()
-        await asyncio.sleep(3)
+        await page.fill("#plateNumberInput", plate)
+    except Exception:
+        await _fill_plate(page, plate, state="NSW")
+    try:
+        await page.locator("#termsAndConditions").check(force=True)
     except Exception:
         pass
-    await _fill_plate(page, plate, state="NSW")
-    await _click_submit(page)
+    for _ in range(3):
+        try:
+            await page.locator("input[value='Check registration'], button:has-text('Check registration')").first.click(timeout=8000)
+        except Exception:
+            break
+        await asyncio.sleep(3)
 
 
 async def _sa(page, plate, first, last):
     await page.goto(ENTRY["SA"], wait_until="domcontentloaded", timeout=BROWSER_TIMEOUT)
     await page.locator("#plateNumber").wait_for(state="visible", timeout=BROWSER_TIMEOUT)
     await page.fill("#plateNumber", plate)
-    await page.click("#step-1-2-submit", timeout=8000)
+    for _ in range(3):
+        try:
+            await page.click("#step-1-2-submit", timeout=8000)
+        except Exception:
+            break
+        await asyncio.sleep(3)
 
 
 async def _nt(page, plate, first, last):
@@ -162,9 +144,17 @@ async def _nt(page, plate, first, last):
 
 async def _tas(page, plate, first, last):
     await page.goto(ENTRY["TAS"], wait_until="domcontentloaded", timeout=BROWSER_TIMEOUT)
-    await page.locator("input[name=plate]").first.wait_for(state="visible", timeout=BROWSER_TIMEOUT)
-    await page.fill("input[name=plate]", plate)
-    await _click_submit(page)
+    await asyncio.sleep(2)
+    try:
+        await page.fill("input[name=plate]", plate)
+    except Exception:
+        await _fill_plate(page, plate, state="TAS")
+    for _ in range(3):
+        try:
+            await page.locator("button[type=submit], input[type=submit]").first.click(timeout=8000)
+        except Exception:
+            break
+        await asyncio.sleep(3)
 
 
 async def _wa(page, plate, first, last):
@@ -180,8 +170,21 @@ async def _wa(page, plate, first, last):
 
 async def _act(page, plate, first, last):
     await page.goto(ENTRY["ACT"], wait_until="domcontentloaded", timeout=BROWSER_TIMEOUT)
-    await _fill_plate(page, plate, state="ACT")
-    await _click_submit(page)
+    await asyncio.sleep(2)
+    try:
+        await page.fill("#plateNumber", plate)
+    except Exception:
+        await _fill_plate(page, plate, state="ACT")
+    try:
+        await page.locator("#privacyCheck").check(force=True)
+    except Exception:
+        pass
+    for _ in range(3):
+        try:
+            await page.locator("input[value*='Next']").first.click(timeout=8000)
+        except Exception:
+            break
+        await asyncio.sleep(3)
 
 
 FUNCS = {"VIC": _vic, "NSW": _nsw, "SA": _sa, "NT": _nt, "TAS": _tas, "WA": _wa, "ACT": _act}
@@ -202,29 +205,21 @@ async def _browser_impl(plate, state, first_name=None, last_name=None):
     ctx = None
     page = None
     try:
-        browser = await pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage",
-                                                 "--disable-blink-features=AutomationControlled"])
-        print(f"[browser] {state} launch {time.time() - _t0:.1f}s", flush=True)
-        ua, cookies = await asyncio.to_thread(_fsr_prewarm, ENTRY[state])
-        print(f"[browser] {state} prewarm {time.time() - _t0:.1f}s cookies={len(cookies)}", flush=True)
-        ctx = await browser.new_context(user_agent=ua, locale="en-AU",
+        browser = await pw.firefox.launch(args=["--no-sandbox", "--disable-dev-shm-usage",
+                                                "--disable-blink-features=AutomationControlled"])
+        print(f"[browser] {state} launch {time.time() - _t0:.1f}s", file=sys.stderr, flush=True)
+        ctx = await browser.new_context(locale="en-AU",
                                         viewport={"width": 1280, "height": 900})
-        await ctx.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-        if cookies:
-            try:
-                await ctx.add_cookies(cookies)
-            except Exception:
-                pass
         page = await ctx.new_page()
-        await Stealth(navigator_user_agent=False).apply_stealth_async(page)
         await FUNCS[state](page, plate, first_name, last_name)
-        print(f"[browser] {state} flow done {time.time() - _t0:.1f}s", flush=True)
-        deadline = time.time() + RESULT_TIMEOUT
+        print(f"[browser] {state} flow done {time.time() - _t0:.1f}s", file=sys.stderr, flush=True)
+        deadline = time.time() + RESULT_TIMEOUT / 1000
         challenge_seen = False
         while time.time() < deadline:
             await asyncio.sleep(2)
             try:
-                text = await page.inner_text("body", timeout=10000)
+                text = await asyncio.wait_for(
+                    page.evaluate("document.body ? document.body.innerText : ''"), timeout=10)
             except Exception:
                 continue
             if _is_challenge(text):
@@ -236,7 +231,10 @@ async def _browser_impl(plate, state, first_name=None, last_name=None):
             result = _extract_result(text)
             if any(result.values()):
                 try:
-                    html = await page.content()
+                    html = await asyncio.wait_for(
+                        page.evaluate(
+                            "document.documentElement ? document.documentElement.outerHTML : ''"),
+                        timeout=10)
                     result = _extract_result(text, html)
                 except Exception:
                     pass
@@ -261,4 +259,4 @@ async def _browser_impl(plate, state, first_name=None, last_name=None):
             await asyncio.wait_for(pw.stop(), timeout=10)
         except Exception:
             pass
-        print(f"[browser] {state} done {time.time() - _t0:.1f}s", flush=True)
+        print(f"[browser] {state} done {time.time() - _t0:.1f}s", file=sys.stderr, flush=True)

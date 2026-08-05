@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
-    && python -m playwright install --with-deps chromium \
+    && python -m playwright install --with-deps chromium firefox \
     && apt-get update \
     && apt-get install -y --no-install-recommends wget xvfb \
     && wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
