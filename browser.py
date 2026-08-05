@@ -180,6 +180,10 @@ def browser_lookup(plate, state):
         raise UpstreamError(f"{state}: vehicle details could not be retrieved")
     except PWTimeout as e:
         raise UpstreamError(f"{state}: timed out: {e}")
+    except UpstreamError:
+        raise
+    except Exception as e:
+        raise UpstreamError(f"{state}: browser lookup failed: {e}")
     finally:
         if page is not None:
             page.close()

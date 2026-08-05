@@ -18,7 +18,7 @@ def _fsr_base():
     return (os.getenv("FLARESOLVERR_URL") or "").strip().rstrip("/") or None
 
 
-def _request(url, *, post=None, sid=None, headers=None, timeout_ms=FSR_TIMEOUT_MS):
+def _request(url, *, post=None, sid=None, headers=None, timeout_ms=FSR_TIMEOUT_MS, _tries=2):
     base = _fsr_base()
     if not base:
         raise UpstreamError("FlareSolverr is not configured")
@@ -34,13 +34,23 @@ def _request(url, *, post=None, sid=None, headers=None, timeout_ms=FSR_TIMEOUT_M
         payload["headers"] = {"Content-Type": "application/x-www-form-urlencoded"}
         if headers:
             payload["headers"].update(headers)
-    r = requests.post(base + "/v1", json=payload, timeout=timeout_ms // 1000 + 30)
-    r.raise_for_status()
-    data = r.json()
-    if data.get("status") != "ok":
-        raise UpstreamError("FlareSolverr: " + str(data.get("message", data.get("error", "failed"))))
-    sol = data["solution"]
-    return sol.get("response", ""), sol
+    last_err = None
+    for _ in range(_tries):
+        try:
+            r = requests.post(base + "/v1", json=payload, timeout=timeout_ms // 1000 + 30)
+            if r.status_code >= 500:
+                last_err = f"FlareSolverr HTTP {r.status_code}"
+                continue
+            r.raise_for_status()
+            data = r.json()
+            if data.get("status") != "ok":
+                raise UpstreamError("FlareSolverr: " + str(data.get("message", data.get("error", "failed"))))
+            sol = data["solution"]
+            return sol.get("response", ""), sol
+        except requests.RequestException as e:
+            last_err = str(e)
+            continue
+    raise UpstreamError(f"FlareSolverr request failed: {last_err}")
 
 
 def _is_plate_input(inp):
@@ -206,4 +216,9 @@ FUNCS = {
 
 
 def fsr_lookup(plate, state):
-    return FUNCS[state](plate)
+    try:
+        return FUNCS[state](plate)
+    except (NotFound, UpstreamBlocked, UpstreamError):
+        raise
+    except Exception as e:
+        raise UpstreamError(f"{state}: FlareSolverr lookup failed: {e}")
