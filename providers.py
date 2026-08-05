@@ -21,11 +21,11 @@ UC_STATES = {"VIC"}
 
 _FIELDS = {
     "vin": r"\b(?:VIN|Vehicle Identification Number|Chassis\s*(?:number)?)\b[:\s]*([A-Z0-9]{4,17})",
-    "make": r"\bMake\b[:\s]*([A-Za-z][A-Za-z .'\-]{1,30})",
-    "model": r"\bModel\b[:\s]*([A-Za-z0-9][A-Za-z0-9 .\-/]{1,40})",
+    "make": r"\bMake\b[:\s]*([A-Za-z][A-Za-z .'\-]*?)(?=\s+(?:Model|Year|Colour|Color|Body|VIN|Vin|Status|Expiry|Odometer|Serial|Registration|Variant)\b|\s*$)",
+    "model": r"\bModel\b[:\s]*([A-Za-z0-9][A-Za-z0-9 .\-/]*?)(?=\s+(?:Year|Make|Colour|Color|Body|VIN|Vin|Status|Expiry|Odometer)\b|\s*$)",
     "year": r"\b(?:Year\s*(?:of|by)?\s*(?:manufacture|built|first|model)?|Date of manufacture)\b[:\s]*([0-9]{4})",
-    "colour": r"\bColou?r\b[:\s]*([A-Za-z][A-Za-z \-]{1,25})",
-    "body_type": r"\bBody\s*(?:type|shape)?\b[:\s]*([A-Za-z][A-Za-z0-9 .\-/]{1,25})",
+    "colour": r"\bColou?r\b[:\s]*([A-Za-z][A-Za-z \-]*?)(?=\s+(?:CTP|Insurer|Model|Make|Body|Year|VIN|Vin|Status|Expiry|Odometer|Compliance)\b|\s*$)",
+    "body_type": r"\bBody\s*(?:type|shape)?\b(?!type\b|shape\b)[:\s]*([A-Za-z][A-Za-z0-9 .\-/]*?)(?=\s+(?:State|Status|Model|Make|Year|Colour|Color|VIN|Vin|Expiry)\b|\s*$)",
 }
 
 
@@ -53,13 +53,35 @@ _LABEL_WORDS = {"number", "chassis", "vin", "make", "model", "colour", "color", 
 
 _LABELS = {
     "vin": ("vin", "vehicle identification number", "chassis", "chassis number", "vin number"),
-    "make": ("make", "vehicle make"),
+    "make": ("make", "vehicle make", "description"),
     "model": ("model", "vehicle model"),
     "year": ("year", "year of manufacture", "year first registered", "date of manufacture",
              "model year", "first registered", "year first registered"),
     "colour": ("colour", "color", "vehicle colour", "vehicle color"),
     "body_type": ("body type", "body shape", "body", "body style"),
 }
+
+_BODY_WORDS = {"wagon", "sedan", "hatchback", "hatch", "coupe", "ute", "utility", "truck",
+               "suv", "van", "bus", "motorcycle", "scooter", "caravan", "trailer", "roadster",
+               "convertible", "limousine", "pickup", "stationwagon", "mpv", "vanlight"}
+
+
+def _parse_description(out):
+    val = out["make"]
+    m = re.match(r"(\d{4})\s+(.+)", val)
+    if m:
+        out["year"] = int(m.group(1))
+        val = m.group(2)
+    parts = val.rsplit(None, 1)
+    if len(parts) == 2 and parts[1].lower().replace(" ", "") in _BODY_WORDS:
+        out["body_type"] = parts[1]
+        val = parts[0]
+    parts = val.rsplit(None, 1)
+    if len(parts) == 2:
+        out["make"] = parts[0]
+        out["model"] = parts[1]
+    else:
+        out["make"] = val
 
 
 def _value_after(el):
@@ -78,14 +100,43 @@ def _value_after(el):
     return None
 
 
+def _table_value(el):
+    parent = el.parent
+    if parent is not None and parent.name == "tr":
+        cells = parent.find_all(["td", "th"])
+        try:
+            idx = cells.index(el)
+        except ValueError:
+            idx = None
+        if idx is not None:
+            nxt_tr = parent.find_next_sibling("tr")
+            if nxt_tr is None:
+                tbl = parent.find_parent("table")
+                if tbl is not None:
+                    tbody = tbl.find("tbody")
+                    if tbody is not None:
+                        nxt_tr = tbody.find("tr")
+            if nxt_tr is not None:
+                nxt_cells = nxt_tr.find_all(["td", "th"])
+                if len(nxt_cells) > len(cells):
+                    nxt_cells = nxt_cells[len(nxt_cells) - len(cells):]
+                if idx < len(nxt_cells):
+                    txt = re.sub(r"\s+", " ", nxt_cells[idx].get_text(" ", strip=True)).strip()
+                    if txt:
+                        return txt
+    return _value_after(el)
+
+
 def _extract_dom(soup):
     out = {"vin": None, "make": None, "model": None, "year": None, "colour": None, "body_type": None}
+    make_label = None
     for field, names in _LABELS.items():
         for el in soup.find_all(True):
             t = re.sub(r"\s+", " ", el.get_text(" ", strip=True)).strip().lower()
-            t = t.rstrip(":").rstrip(".")
+            t = re.sub(r"\(.*?\)", " ", t)
+            t = re.sub(r"\s+", " ", t).strip().rstrip(":").rstrip(".")
             if t in names:
-                val = _value_after(el)
+                val = _table_value(el)
                 if val and val.lower() not in _LABEL_WORDS:
                     if field == "year":
                         m = re.search(r"\d{4}", val)
@@ -93,6 +144,28 @@ def _extract_dom(soup):
                             out[field] = int(m.group(0))
                     else:
                         out[field] = val
+                        if field == "make":
+                            make_label = t
+                break
+    if out["make"]:
+        if make_label == "description":
+            _parse_description(out)
+        elif not out["year"]:
+            m = re.match(r"(\d{4})\s+(.+)", out["make"])
+            if m:
+                out["year"] = int(m.group(1))
+                out["make"] = m.group(2)
+    if not out["make"]:
+        for cell in soup.find_all(["th", "td"]):
+            if re.sub(r"\s+", " ", cell.get_text(" ", strip=True)).strip().lower() == "vehicle":
+                val = _table_value(cell)
+                if val and val.lower() not in _LABEL_WORDS:
+                    out["make"] = val
+                    if not out["year"]:
+                        m = re.match(r"(\d{4})\s+(.+)", val)
+                        if m:
+                            out["year"] = int(m.group(1))
+                            out["make"] = m.group(2)
                 break
     return out
 
@@ -191,8 +264,7 @@ def qld_lookup(plate):
     text = re.sub(r"\s+", " ", text)
     if re.search(r"registration\s+number:\s*registration\s+not\s+found", text, re.I):
         raise NotFound(plate)
-    result = _extract(soup)
-    result["vin"] = None  # QLD does not expose the VIN in public results
+    result = _extract_result(text, str(soup))
     return result
 
 

@@ -103,6 +103,25 @@ async def _vic(page, plate, first, last):
     await _click_submit(page, text="Search")
 
 
+async def _has_result(page, plate):
+    try:
+        txt = await asyncio.wait_for(
+            page.evaluate("document.body ? document.body.innerText : ''"), timeout=8)
+        html = await asyncio.wait_for(
+            page.evaluate(
+                "document.documentElement ? document.documentElement.outerHTML : ''"), timeout=8)
+    except Exception:
+        return False, ""
+    if _looks_like_not_found(txt):
+        return True, txt
+    if plate.lower() not in txt.lower():
+        return False, txt
+    res = _extract_result(txt, html)
+    if any(res.values()):
+        return True, txt
+    return False, txt
+
+
 async def _nsw(page, plate, first, last):
     await page.goto(ENTRY["NSW"], wait_until="domcontentloaded", timeout=BROWSER_TIMEOUT)
     await asyncio.sleep(2)
@@ -120,6 +139,9 @@ async def _nsw(page, plate, first, last):
         except Exception:
             break
         await asyncio.sleep(3)
+        done, _ = await _has_result(page, plate)
+        if done:
+            break
 
 
 async def _sa(page, plate, first, last):
@@ -155,6 +177,9 @@ async def _tas(page, plate, first, last):
         except Exception:
             break
         await asyncio.sleep(3)
+        done, _ = await _has_result(page, plate)
+        if done:
+            break
 
 
 async def _wa(page, plate, first, last):
@@ -185,6 +210,15 @@ async def _act(page, plate, first, last):
         except Exception:
             break
         await asyncio.sleep(3)
+        done, _ = await _has_result(page, plate)
+        if done:
+            break
+    try:
+        tab = page.get_by_text("Display Details", exact=False).first
+        await tab.click(timeout=4000)
+        await asyncio.sleep(3)
+    except Exception:
+        pass
 
 
 FUNCS = {"VIC": _vic, "NSW": _nsw, "SA": _sa, "NT": _nt, "TAS": _tas, "WA": _wa, "ACT": _act}
@@ -228,16 +262,15 @@ async def _browser_impl(plate, state, first_name=None, last_name=None):
             _check_blocked(state, text)
             if _looks_like_not_found(text):
                 raise NotFound(plate)
-            result = _extract_result(text)
+            try:
+                html = await asyncio.wait_for(
+                    page.evaluate(
+                        "document.documentElement ? document.documentElement.outerHTML : ''"),
+                    timeout=10)
+            except Exception:
+                html = None
+            result = _extract_result(text, html)
             if any(result.values()):
-                try:
-                    html = await asyncio.wait_for(
-                        page.evaluate(
-                            "document.documentElement ? document.documentElement.outerHTML : ''"),
-                        timeout=10)
-                    result = _extract_result(text, html)
-                except Exception:
-                    pass
                 return result
         if challenge_seen:
             raise UpstreamBlocked(f"{state}: bot security verification did not resolve")
