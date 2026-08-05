@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import time
 
 import setuptools  # noqa: F401  (distutils shim for undetected-chromedriver on py3.12)
@@ -34,8 +35,10 @@ def _driver():
     _ensure_display()
     opts = uc.ChromeOptions()
     for arg in ("--no-sandbox", "--disable-dev-shm-usage", "--window-size=1280,900",
-                "--disable-blink-features=AutomationControlled"):
+                "--disable-blink-features=AutomationControlled",
+                "--disable-gpu", "--disable-software-rasterizer"):
         opts.add_argument(arg)
+    print("uc: launching Chrome", file=sys.stderr, flush=True)
     return uc.Chrome(options=opts, headless=False)
 
 
@@ -215,7 +218,9 @@ FLOWS = {"VIC": _flow_vic, "NSW": _flow_nsw, "SA": _flow_sa, "TAS": _flow_tas, "
 def uc_lookup(plate, state):
     driver = _driver()
     try:
+        print("uc: driver created, navigating", file=sys.stderr, flush=True)
         driver.get(STATE_URLS[state])
+        print("uc: navigated, waiting", file=sys.stderr, flush=True)
         time.sleep(4)
         _dismiss_banners(driver)
         wait = WebDriverWait(driver, 25)
