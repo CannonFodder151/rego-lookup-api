@@ -1,3 +1,4 @@
+import os
 import re
 
 import requests
@@ -8,10 +9,12 @@ UA = (
     "(KHTML, like Gecko) Chrome/125.0 Safari/537.36"
 )
 
-STATES = {"VIC", "NSW", "QLD", "WA", "SA", "NT", "TAS"}
+STATES = {"VIC", "NSW", "QLD", "WA", "SA", "NT", "TAS", "ACT"}
+
+BROWSER_STATES = {"VIC", "NSW", "WA", "SA", "NT", "TAS", "ACT"}
 
 _FIELDS = {
-    "vin": r"\bVIN\b[:\s]*([A-Z0-9]{6,17})",
+    "vin": r"\b(?:VIN|Vehicle Identification Number|Chassis\s*(?:number)?)\b[:\s]*([A-Z0-9]{4,17})",
     "make": r"\bMake\b[:\s]*([A-Za-z][A-Za-z .'\-]{1,30})",
     "model": r"\bModel\b[:\s]*([A-Za-z0-9][A-Za-z0-9 .\-/]{1,40})",
     "year": r"\b(?:Year\s*(?:of|by)?\s*(?:manufacture|built|first|model)?|Date of manufacture)\b[:\s]*([0-9]{4})",
@@ -38,11 +41,7 @@ def _session():
     return s
 
 
-def _extract(soup, scope=None):
-    node = soup
-    if scope is not None:
-        node = scope
-    text = node.get_text(" ", strip=True)
+def _extract_text(text):
     text = re.sub(r"\s+", " ", text)
     out = {"vin": None, "make": None, "model": None, "year": None, "colour": None, "body_type": None}
     for key, pat in _FIELDS.items():
@@ -54,6 +53,13 @@ def _extract(soup, scope=None):
             elif len(val) >= 2:
                 out[key] = val
     return out
+
+
+def _extract(soup, scope=None):
+    node = soup
+    if scope is not None:
+        node = scope
+    return _extract_text(node.get_text(" ", strip=True))
 
 
 # ---------------------------------------------------------------- QLD
@@ -171,10 +177,20 @@ PROVIDERS = {
     "SA": _blocked("SA", "JS single-page app + AU-IP geo-block on ezyreg.sa.gov.au"),
     "NT": _blocked("NT", "Cloudflare managed challenge on nt.gov.au"),
     "TAS": _blocked("TAS", "reCAPTCHA v3 + Cloudflare on transport.stgro-2780.saas.squiz.cloud"),
+    "ACT": _blocked("ACT", "JS-rendered check on accesscanberra.act.gov.au"),
 }
 
 
 def lookup(plate, state):
+    if state in BROWSER_STATES and os.getenv("PLAYWRIGHT", "0") == "1":
+        try:
+            from browser import browser_lookup
+        except ImportError:
+            pass
+        else:
+            result = browser_lookup(plate, state)
+            result.update({"plate": plate, "state": state})
+            return result
     provider = PROVIDERS[state]
     result = provider(plate)
     result.update({"plate": plate, "state": state})

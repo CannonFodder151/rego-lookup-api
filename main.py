@@ -45,7 +45,7 @@ def rego_lookup(
 
     state = req.state.strip().upper()
     if state not in STATES:
-        raise HTTPException(status_code=400, detail="state must be one of VIC, NSW, QLD, WA, SA, NT, TAS")
+        raise HTTPException(status_code=400, detail="state must be one of VIC, NSW, QLD, WA, SA, NT, TAS, ACT")
 
     plate = req.plate.strip().upper()
     try:
