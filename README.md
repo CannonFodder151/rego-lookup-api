@@ -55,8 +55,8 @@ Status codes:
 | Env var | Required | Description |
 |---|---|---|
 | `API_KEY` | yes | Key clients must present. Set a long random string. |
-| `FLARESOLVERR_URL` | no | FlareSolverr instance (e.g. `http://10.0.3.17:8191`). When set, browser-based states route through it to bypass Cloudflare. |
-| `PLAYWRIGHT` | no | `1` enables the headless-Chromium providers as a fallback when FlareSolverr is not configured. |
+| `PLAYWRIGHT` | no | `1` enables the Playwright Firefox worker for NSW/SA/NT/TAS/WA/ACT. |
+| `UNDETECTED` | no | `1` enables the `undetected-chromedriver` provider for VIC. |
 
 ## Run
 
@@ -64,23 +64,24 @@ Status codes:
 docker build -t rego-lookup .
 docker run -d --name rego-lookup -p 8000:8000 \
   -e API_KEY='change-me' \
-  -e FLARESOLVERR_URL='http://10.0.3.17:8191' \
+  -e PLAYWRIGHT=1 \
+  -e UNDETECTED=1 \
   rego-lookup
 ```
 
 ## State support (2026-08)
 
-The API scrapes each state's government "check registration" service. Plain HTTP is used for QLD; the other states are driven by headless Chromium (Playwright async) that first takes the FlareSolverr Cloudflare-clearance cookies, then fills the form and clicks Search. VIC uses `undetected-chromedriver` headful under Xvfb (`UNDETECTED=1`), which defeats Cloudflare's fingerprinting. A state returns `502` when its site blocks the request or no vehicle details are retrievable.
+All 8 states work. QLD uses plain HTTP; VIC uses `undetected-chromedriver` headful under Xvfb (`UNDETECTED=1`, defeats Cloudflare and returns the full VIN); NSW, SA, NT, TAS, WA, ACT use a Playwright **Firefox** worker run as a subprocess (`PLAYWRIGHT=1`) — a real Firefox passes the state sites' reCAPTCHA v2/v3 and JS-rendered checks without a solver.
 
 | State | Status |
 |---|---|
 | QLD | Working (verified) |
-| VIC | Working (verified) — returns full VIN, e.g. `TCRWN` → TOYOTA / 2009 / BLACK / SEDAN / `6ZZ9GWS2040011605` |
-| NT | Working (verified) — note its first/last-name fields are hidden anti-bot honeypots, so the submitted names are ignored |
+| VIC | Working (verified) — full VIN, e.g. `TCRWN` → TOYOTA / 2009 / BLACK / SEDAN / `6ZZ9GWS2040011605` |
+| NSW | Working (verified) — T&C checkbox + reCAPTCHA |
+| NT | Working (verified) — first/last-name fields are hidden anti-bot honeypots, ignored |
 | WA | Working (verified) |
-| NSW | Blocked — check form is behind a JS popup flow |
-| SA | Blocked — JS single-page app, timed out |
-| TAS | Blocked — reCAPTCHA v3 on submit |
-| ACT | Blocked — no search form reachable on the check page |
+| SA | Working (verified) |
+| TAS | Working (verified) |
+| ACT | Working (verified) — Wicket wizard + privacy checkbox |
 
-`ponytail:` NSW/SA/TAS/ACT need the same treatment VIC got (an `undetected-chromedriver` headful provider per state). Respect each state site's terms of service and rate limits.
+Respect each state site's terms of service and rate limits.
