@@ -70,19 +70,17 @@ docker run -d --name rego-lookup -p 8000:8000 \
 
 ## State support (2026-08)
 
-The API scrapes each state's government "check registration" service. Plain HTTP is used for QLD; the other states are driven by headless Chromium (Playwright async) that first takes the FlareSolverr Cloudflare-clearance cookies, then fills the form and clicks Search. A state returns `502` when its site blocks the request or no vehicle details are retrievable.
+The API scrapes each state's government "check registration" service. Plain HTTP is used for QLD; the other states are driven by headless Chromium (Playwright async) that first takes the FlareSolverr Cloudflare-clearance cookies, then fills the form and clicks Search. VIC uses `undetected-chromedriver` headful under Xvfb (`UNDETECTED=1`), which defeats Cloudflare's fingerprinting. A state returns `502` when its site blocks the request or no vehicle details are retrievable.
 
 | State | Status |
 |---|---|
 | QLD | Working (verified) |
+| VIC | Working (verified) — returns full VIN, e.g. `TCRWN` → TOYOTA / 2009 / BLACK / SEDAN / `6ZZ9GWS2040011605` |
 | NT | Working (verified) — note its first/last-name fields are hidden anti-bot honeypots, so the submitted names are ignored |
 | WA | Working (verified) |
-| VIC | Blocked — Cloudflare re-challenges the Chromium binary on the enquiry POST; needs a browser Cloudflare can't fingerprint |
 | NSW | Blocked — check form is behind a JS popup flow |
 | SA | Blocked — JS single-page app, timed out |
 | TAS | Blocked — reCAPTCHA v3 on submit |
 | ACT | Blocked — no search form reachable on the check page |
 
-`ponytail:` FlareSolverr clears the initial Cloudflare, but VIC's enquiry POST re-challenges the browser binary, so VIC needs a fingerprint-resistant browser or a paid CAPTCHA/anti-bot service. Public state checks generally do **not** expose the full VIN; when shown it is returned as-is.
-
-Respect each state site's terms of service and rate limits.
+`ponytail:` NSW/SA/TAS/ACT need the same treatment VIC got (an `undetected-chromedriver` headful provider per state). Respect each state site's terms of service and rate limits.
