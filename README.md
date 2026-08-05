@@ -17,6 +17,12 @@ Request body:
 { "plate": "1ABC123", "state": "QLD" }
 ```
 
+Optional for states that verify the owner (currently unused by the providers):
+
+```json
+{ "plate": "1ABC123", "state": "NT", "first_name": "John", "last_name": "Doe" }
+```
+
 `state` is one of `VIC, NSW, QLD, WA, SA, NT, TAS, ACT`.
 
 Auth: send the API key as `X-API-Key: <key>` header or `Authorization: Bearer <key>`.
@@ -64,19 +70,19 @@ docker run -d --name rego-lookup -p 8000:8000 \
 
 ## State support (2026-08)
 
-The API scrapes each state's government "check registration" service. Plain HTTP works for QLD only; the other states sit behind Cloudflare, JS-rendered forms, captchas, or owner-name verification, so they return `502` with the reason.
+The API scrapes each state's government "check registration" service. Plain HTTP is used for QLD; the other states are driven by headless Chromium (Playwright async) that first takes the FlareSolverr Cloudflare-clearance cookies, then fills the form and clicks Search. A state returns `502` when its site blocks the request or no vehicle details are retrievable.
 
 | State | Status |
 |---|---|
 | QLD | Working (verified) |
-| VIC | Cloudflare bypassed via FlareSolverr, but the check form is a JS state-machine that needs click interaction — `502` |
-| NSW | JS-injected form — `502` |
-| WA | Wicket AJAX flow — `502` |
-| SA | JS single-page app — `502` |
-| NT | Check form requires owner first/last name — `502` |
-| TAS | reCAPTCHA v3 token at submit — `502` |
-| ACT | JS-rendered check — `502` |
+| NT | Working (verified) — note its first/last-name fields are hidden anti-bot honeypots, so the submitted names are ignored |
+| WA | Working (verified) |
+| VIC | Blocked — Cloudflare re-challenges the Chromium binary on the enquiry POST; needs a browser Cloudflare can't fingerprint |
+| NSW | Blocked — check form is behind a JS popup flow |
+| SA | Blocked — JS single-page app, timed out |
+| TAS | Blocked — reCAPTCHA v3 on submit |
+| ACT | Blocked — no search form reachable on the check page |
 
-`ponytail:` FlareSolverr gets past Cloudflare; what's missing for VIC/NSW/WA/SA/ACT is *click* automation. A state machine that replays clicks (e.g. Playwright with the challenge solved by FlareSolverr's proxy) is the upgrade path. Public state checks generally do **not** expose the full VIN; when shown (e.g. VIC displays a partial VIN), it is returned as-is.
+`ponytail:` FlareSolverr clears the initial Cloudflare, but VIC's enquiry POST re-challenges the browser binary, so VIC needs a fingerprint-resistant browser or a paid CAPTCHA/anti-bot service. Public state checks generally do **not** expose the full VIN; when shown it is returned as-is.
 
 Respect each state site's terms of service and rate limits.

@@ -1,4 +1,4 @@
-import concurrent.futures
+import asyncio
 import os
 import re
 
@@ -13,9 +13,6 @@ UA = (
 STATES = {"VIC", "NSW", "QLD", "WA", "SA", "NT", "TAS", "ACT"}
 
 BROWSER_STATES = {"VIC", "NSW", "WA", "SA", "NT", "TAS", "ACT"}
-
-_BROWSER_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
-    max_workers=3, thread_name_prefix="rego-browser")
 
 _FIELDS = {
     "vin": r"\b(?:VIN|Vehicle Identification Number|Chassis\s*(?:number)?)\b[:\s]*([A-Z0-9]{4,17})",
@@ -49,6 +46,61 @@ _LABEL_WORDS = {"number", "chassis", "vin", "make", "model", "colour", "color", 
                 "year", "type", "vehicle", "registration", "search", "searching", "value",
                 "field", "required", "vehicle identification number"}
 
+_LABELS = {
+    "vin": ("vin", "vehicle identification number", "chassis", "chassis number", "vin number"),
+    "make": ("make", "vehicle make"),
+    "model": ("model", "vehicle model"),
+    "year": ("year", "year of manufacture", "year first registered", "date of manufacture",
+             "model year", "first registered", "year first registered"),
+    "colour": ("colour", "color", "vehicle colour", "vehicle color"),
+    "body_type": ("body type", "body shape", "body", "body style"),
+}
+
+
+def _value_after(el):
+    parent = el.parent
+    if parent is None:
+        return None
+    kids = [c for c in parent.children if getattr(c, "name", None)]
+    try:
+        idx = kids.index(el)
+    except ValueError:
+        return None
+    for nxt in kids[idx + 1:]:
+        txt = re.sub(r"\s+", " ", nxt.get_text(" ", strip=True)).strip()
+        if txt:
+            return txt
+    return None
+
+
+def _extract_dom(soup):
+    out = {"vin": None, "make": None, "model": None, "year": None, "colour": None, "body_type": None}
+    for field, names in _LABELS.items():
+        for el in soup.find_all(True):
+            t = re.sub(r"\s+", " ", el.get_text(" ", strip=True)).strip().lower()
+            t = t.rstrip(":").rstrip(".")
+            if t in names:
+                val = _value_after(el)
+                if val and val.lower() not in _LABEL_WORDS:
+                    if field == "year":
+                        m = re.search(r"\d{4}", val)
+                        if m:
+                            out[field] = int(m.group(0))
+                    else:
+                        out[field] = val
+                break
+    return out
+
+
+def _extract_result(text, html=None):
+    result = _extract_text(text)
+    if html:
+        dom = _extract_dom(BeautifulSoup(html, "html.parser"))
+        for k in result:
+            if dom.get(k):
+                result[k] = dom[k]
+    return result
+
 
 def _extract_text(text):
     text = re.sub(r"\s+", " ", text)
@@ -66,7 +118,8 @@ def _extract_text(text):
 
 _NOT_FOUND_PHRASES = ("registration not found", "no registration details", "no vehicle registration",
                       "not currently registered", "registration number not found", "no record of this",
-                      "cannot be found", "is not registered", "no registration found", "not registered")
+                      "cannot be found", "is not registered", "no registration found", "not registered",
+                      "no vehicles match", "must enter a valid registration")
 
 
 def _looks_like_not_found(text):
@@ -204,33 +257,28 @@ def _fsr_configured():
     return bool((os.getenv("FLARESOLVERR_URL") or "").strip())
 
 
-def _run_browser(plate, state):
+def _browser_enabled():
+    return os.getenv("PLAYWRIGHT", "0") == "1" or _fsr_configured()
+
+
+async def _run_browser(plate, state, first_name, last_name):
     from browser import browser_lookup
-    try:
-        fut = _BROWSER_EXECUTOR.submit(browser_lookup, plate, state)
-        return fut.result(timeout=110)
-    except concurrent.futures.TimeoutError:
-        raise UpstreamError(f"{state}: lookup timed out")
+    return await browser_lookup(plate, state, first_name, last_name)
 
 
-def lookup(plate, state):
-    if state in BROWSER_STATES and _fsr_configured():
+async def lookup(plate, state, first_name=None, last_name=None):
+    if state in BROWSER_STATES and _browser_enabled():
         try:
-            from flaresolverr import fsr_lookup
-            result = fsr_lookup(plate, state)
-            result.update({"plate": plate, "state": state})
-            return result
-        except ImportError:
-            pass
-    if state in BROWSER_STATES and os.getenv("PLAYWRIGHT", "0") == "1":
-        try:
-            result = _run_browser(plate, state)
+            result = await asyncio.wait_for(
+                _run_browser(plate, state, first_name, last_name), timeout=140)
         except ImportError:
             result = None
+        except asyncio.TimeoutError:
+            raise UpstreamError(f"{state}: lookup timed out")
         if result is not None:
             result.update({"plate": plate, "state": state})
             return result
     provider = PROVIDERS[state]
-    result = provider(plate)
+    result = await asyncio.to_thread(provider, plate)
     result.update({"plate": plate, "state": state})
     return result

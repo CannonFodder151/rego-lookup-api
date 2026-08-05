@@ -13,6 +13,8 @@ API_KEY = os.getenv("API_KEY", "")
 class LookupRequest(BaseModel):
     plate: str = Field(min_length=1, max_length=20)
     state: str = Field(min_length=2, max_length=3)
+    first_name: str | None = None
+    last_name: str | None = None
 
 
 class LookupResponse(BaseModel):
@@ -32,7 +34,7 @@ def health():
 
 
 @app.post("/lookup", response_model=LookupResponse)
-def rego_lookup(
+async def rego_lookup(
     req: LookupRequest,
     x_api_key: str | None = Header(None),
     authorization: str | None = Header(None),
@@ -49,7 +51,7 @@ def rego_lookup(
 
     plate = req.plate.strip().upper()
     try:
-        return lookup(plate, state)
+        return await lookup(plate, state, req.first_name, req.last_name)
     except NotFound:
         raise HTTPException(status_code=404, detail="registration not found")
     except UpstreamBlocked as e:
