@@ -43,13 +43,32 @@ def _is_challenge(text):
 
 
 def _dismiss_banners(driver):
+    for _ in range(3):
+        clicked = False
+        try:
+            for b in driver.find_elements(By.CSS_SELECTOR, "button"):
+                t = (b.text or "").strip().lower()
+                if any(w in t for w in ("ok", "accept", "agree", "consent", "allow")) and b.is_displayed():
+                    try:
+                        b.click()
+                        clicked = True
+                    except Exception:
+                        driver.execute_script("arguments[0].click()", b)
+                        clicked = True
+        except Exception:
+            pass
+        if not clicked:
+            break
+        time.sleep(1)
+
+
+def _click(driver, el):
+    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
+    time.sleep(0.5)
     try:
-        for b in driver.find_elements(By.CSS_SELECTOR, "button"):
-            if (b.text or "").strip().lower() == "ok":
-                b.click()
-                break
+        el.click()
     except Exception:
-        pass
+        driver.execute_script("arguments[0].click()", el)
 
 
 def _find_search_button(driver):
@@ -74,7 +93,7 @@ def uc_lookup(plate, state):
         wait = WebDriverWait(driver, 25)
         try:
             field = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "#RegistrationNumbercar")))
-            field.click()
+            _click(driver, field)
             field.send_keys(plate)
         except Exception:
             raise UpstreamError("VIC: registration number field could not be filled")
@@ -86,13 +105,14 @@ def uc_lookup(plate, state):
             except Exception:
                 raise UpstreamError("VIC: search button could not be found")
         try:
-            btn.click()
+            _click(driver, btn)
         except Exception:
             raise UpstreamError("VIC: search button could not be clicked")
         deadline = time.time() + RESULT_TIMEOUT
         while time.time() < deadline:
             time.sleep(2)
-            html = driver.page_source
+            html = driver.execute_script(
+                "return document.documentElement ? document.documentElement.outerHTML : ''")
             soup = BeautifulSoup(html, "html.parser")
             text = re.sub(r"\s+", " ", soup.get_text(" ", strip=True))
             if _is_challenge(text):
