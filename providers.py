@@ -270,7 +270,7 @@ async def lookup(plate, state, first_name=None, last_name=None):
     if state in BROWSER_STATES and _browser_enabled():
         try:
             result = await asyncio.wait_for(
-                _run_browser(plate, state, first_name, last_name), timeout=140)
+                _run_browser(plate, state, first_name, last_name), timeout=170)
         except ImportError:
             result = None
         except asyncio.TimeoutError:

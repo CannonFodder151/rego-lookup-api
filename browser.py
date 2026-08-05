@@ -138,7 +138,7 @@ async def _nsw(page, plate, first, last):
         link = page.get_by_text("Check online", exact=False).first
         await link.wait_for(state="visible", timeout=15000)
         await link.click()
-        await page.wait_for_timeout(3000)
+        await asyncio.sleep(3)
     except Exception:
         pass
     await _fill_plate(page, plate, state="NSW")
@@ -190,7 +190,7 @@ FUNCS = {"VIC": _vic, "NSW": _nsw, "SA": _sa, "NT": _nt, "TAS": _tas, "WA": _wa,
 async def browser_lookup(plate, state, first_name=None, last_name=None):
     try:
         return await asyncio.wait_for(
-            _browser_impl(plate, state, first_name, last_name), timeout=95)
+            _browser_impl(plate, state, first_name, last_name), timeout=120)
     except asyncio.TimeoutError:
         raise UpstreamError(f"{state}: lookup timed out")
 
@@ -222,11 +222,9 @@ async def _browser_impl(plate, state, first_name=None, last_name=None):
         deadline = time.time() + RESULT_TIMEOUT
         challenge_seen = False
         while time.time() < deadline:
-            await page.wait_for_timeout(2000)
+            await asyncio.sleep(2)
             try:
-                text = await asyncio.wait_for(
-                    page.evaluate("() => document.body ? document.body.innerText : ''"),
-                    timeout=5)
+                text = await page.inner_text("body", timeout=10000)
             except Exception:
                 continue
             if _is_challenge(text):
@@ -238,7 +236,7 @@ async def _browser_impl(plate, state, first_name=None, last_name=None):
             result = _extract_result(text)
             if any(result.values()):
                 try:
-                    html = await asyncio.wait_for(page.content(), timeout=5)
+                    html = await page.content()
                     result = _extract_result(text, html)
                 except Exception:
                     pass
