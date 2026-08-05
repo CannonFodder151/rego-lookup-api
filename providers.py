@@ -119,7 +119,7 @@ def _extract_text(text):
 _NOT_FOUND_PHRASES = ("registration not found", "no registration details", "no vehicle registration",
                       "not currently registered", "registration number not found", "no record of this",
                       "cannot be found", "is not registered", "no registration found", "not registered",
-                      "no vehicles match", "must enter a valid registration")
+                      "no vehicles match", "must enter a valid registration", "no matches found")
 
 
 def _looks_like_not_found(text):
@@ -266,7 +266,23 @@ async def _run_browser(plate, state, first_name, last_name):
     return await browser_lookup(plate, state, first_name, last_name)
 
 
+def _uc_enabled():
+    return os.getenv("UNDETECTED", "0") == "1"
+
+
 async def lookup(plate, state, first_name=None, last_name=None):
+    if state == "VIC" and _uc_enabled():
+        try:
+            from undetected import uc_lookup
+            result = await asyncio.wait_for(
+                asyncio.to_thread(uc_lookup, plate, state), timeout=170)
+        except asyncio.TimeoutError:
+            raise UpstreamError(f"{state}: lookup timed out")
+        except ImportError:
+            result = None
+        if result is not None:
+            result.update({"plate": plate, "state": state})
+            return result
     if state in BROWSER_STATES and _browser_enabled():
         try:
             result = await asyncio.wait_for(
