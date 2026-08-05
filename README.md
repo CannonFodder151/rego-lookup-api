@@ -49,30 +49,34 @@ Status codes:
 | Env var | Required | Description |
 |---|---|---|
 | `API_KEY` | yes | Key clients must present. Set a long random string. |
-| `PLAYWRIGHT` | no | `1` enables headless-Chromium providers for the bot-walled states. Set to `0` to disable. |
+| `FLARESOLVERR_URL` | no | FlareSolverr instance (e.g. `http://10.0.3.17:8191`). When set, browser-based states route through it to bypass Cloudflare. |
+| `PLAYWRIGHT` | no | `1` enables the headless-Chromium providers as a fallback when FlareSolverr is not configured. |
 
 ## Run
 
 ```bash
 docker build -t rego-lookup .
-docker run -d --name rego-lookup -p 8000:8000 -e API_KEY='change-me' -e PLAYWRIGHT=1 rego-lookup
+docker run -d --name rego-lookup -p 8000:8000 \
+  -e API_KEY='change-me' \
+  -e FLARESOLVERR_URL='http://10.0.3.17:8191' \
+  rego-lookup
 ```
 
 ## State support (2026-08)
 
-The API scrapes each state's government "check registration" service. State sites change and many block plain HTTP, so the blocked ones are driven with Playwright (headless Chromium) when `PLAYWRIGHT=1`.
+The API scrapes each state's government "check registration" service. Plain HTTP works for QLD only; the other states sit behind Cloudflare, JS-rendered forms, captchas, or owner-name verification, so they return `502` with the reason.
 
-| State | Plain HTTP | Playwright |
-|---|---|---|
-| QLD | Working (verified) | — |
-| VIC | 502 — Cloudflare | Attempts (Cloudflare challenge) |
-| NSW | 502 — JS-injected form | Attempts |
-| WA | 502 — Wicket AJAX | Attempts |
-| SA | 502 — JS SPA + AU-IP geo-block | Attempts (needs AU IP) |
-| NT | 502 — Cloudflare | Attempts |
-| TAS | 502 — reCAPTCHA v3 + Cloudflare | Attempts |
-| ACT | 502 — JS-rendered check | Attempts |
+| State | Status |
+|---|---|
+| QLD | Working (verified) |
+| VIC | Cloudflare bypassed via FlareSolverr, but the check form is a JS state-machine that needs click interaction — `502` |
+| NSW | JS-injected form — `502` |
+| WA | Wicket AJAX flow — `502` |
+| SA | JS single-page app — `502` |
+| NT | Check form requires owner first/last name — `502` |
+| TAS | reCAPTCHA v3 token at submit — `502` |
+| ACT | JS-rendered check — `502` |
 
-A state returns `502` when its site blocks the request or no vehicle details are retrievable. Public state checks generally do **not** expose the full VIN; when they show one (VIC shows a partial VIN), it is returned as-is.
+`ponytail:` FlareSolverr gets past Cloudflare; what's missing for VIC/NSW/WA/SA/ACT is *click* automation. A state machine that replays clicks (e.g. Playwright with the challenge solved by FlareSolverr's proxy) is the upgrade path. Public state checks generally do **not** expose the full VIN; when shown (e.g. VIC displays a partial VIN), it is returned as-is.
 
 Respect each state site's terms of service and rate limits.

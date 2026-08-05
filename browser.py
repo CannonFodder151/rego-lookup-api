@@ -4,26 +4,13 @@ import time
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 from playwright_stealth import Stealth
 
-from providers import NotFound, UpstreamBlocked, UpstreamError, _extract_text, UA
-
-_lib = None  # (playwright, browser)
+from providers import (NotFound, UpstreamBlocked, UpstreamError, _extract_text,
+                       _looks_like_not_found, UA)
 
 BROWSER_TIMEOUT = 45000
 RESULT_TIMEOUT = 30000
 
 _PLATE_HINTS = ("plate", "rego", "registration", "vehicle number", "number plate")
-
-
-def _browser():
-    global _lib
-    if _lib is not None and _lib[1] is not None and _lib[1].is_connected():
-        return _lib[1]
-    if _lib is None:
-        _lib = [sync_playwright().start(), None]
-    if _lib[1] is None or not _lib[1].is_connected():
-        _lib[1] = _lib[0].chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage",
-                                                "--disable-blink-features=AutomationControlled"])
-    return _lib[1]
 
 
 def _new_context(browser):
@@ -84,16 +71,6 @@ def _click_submit(page, text=None):
             loc.first.click(timeout=15000)
             return
     raise UpstreamError("no submit button found on page")
-
-
-def _looks_like_not_found(t):
-    t = t.lower()
-    for p in ("registration not found", "no registration details", "no vehicle registration",
-              "not currently registered", "registration number not found", "no record of this",
-              "cannot be found", "is not registered", "no registration found", "not registered"):
-        if p in t:
-            return True
-    return False
 
 
 def _is_challenge(text):
@@ -170,11 +147,16 @@ FUNCS = {"VIC": _vic, "NSW": _nsw, "SA": _sa, "NT": _nt, "TAS": _tas, "WA": _wa,
 
 
 def browser_lookup(plate, state):
-    browser = _browser()
-    ctx = _new_context(browser)
-    page = ctx.new_page()
-    Stealth(navigator_user_agent=False).apply_stealth_sync(page)
+    pw = sync_playwright().start()
+    browser = None
+    ctx = None
+    page = None
     try:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage",
+                                           "--disable-blink-features=AutomationControlled"])
+        ctx = _new_context(browser)
+        page = ctx.new_page()
+        Stealth(navigator_user_agent=False).apply_stealth_sync(page)
         FUNCS[state](page, plate)
         deadline = time.time() + RESULT_TIMEOUT
         challenge_seen = False
@@ -199,4 +181,10 @@ def browser_lookup(plate, state):
     except PWTimeout as e:
         raise UpstreamError(f"{state}: timed out: {e}")
     finally:
-        ctx.close()
+        if page is not None:
+            page.close()
+        if ctx is not None:
+            ctx.close()
+        if browser is not None:
+            browser.close()
+        pw.stop()

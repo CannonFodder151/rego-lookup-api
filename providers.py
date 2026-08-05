@@ -1,3 +1,4 @@
+import concurrent.futures
 import os
 import re
 
@@ -12,6 +13,9 @@ UA = (
 STATES = {"VIC", "NSW", "QLD", "WA", "SA", "NT", "TAS", "ACT"}
 
 BROWSER_STATES = {"VIC", "NSW", "WA", "SA", "NT", "TAS", "ACT"}
+
+_BROWSER_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=3, thread_name_prefix="rego-browser")
 
 _FIELDS = {
     "vin": r"\b(?:VIN|Vehicle Identification Number|Chassis\s*(?:number)?)\b[:\s]*([A-Z0-9]{4,17})",
@@ -41,6 +45,11 @@ def _session():
     return s
 
 
+_LABEL_WORDS = {"number", "chassis", "vin", "make", "model", "colour", "color", "body",
+                "year", "type", "vehicle", "registration", "search", "searching", "value",
+                "field", "required", "vehicle identification number"}
+
+
 def _extract_text(text):
     text = re.sub(r"\s+", " ", text)
     out = {"vin": None, "make": None, "model": None, "year": None, "colour": None, "body_type": None}
@@ -50,9 +59,19 @@ def _extract_text(text):
             val = m.group(1).strip()
             if key == "year":
                 out[key] = int(val)
-            elif len(val) >= 2:
+            elif val.lower() not in _LABEL_WORDS and len(val) >= 2:
                 out[key] = val
     return out
+
+
+_NOT_FOUND_PHRASES = ("registration not found", "no registration details", "no vehicle registration",
+                      "not currently registered", "registration number not found", "no record of this",
+                      "cannot be found", "is not registered", "no registration found", "not registered")
+
+
+def _looks_like_not_found(text):
+    t = text.lower()
+    return any(p in t for p in _NOT_FOUND_PHRASES)
 
 
 def _extract(soup, scope=None):
@@ -181,14 +200,34 @@ PROVIDERS = {
 }
 
 
+def _fsr_configured():
+    return bool((os.getenv("FLARESOLVERR_URL") or "").strip())
+
+
+def _run_browser(plate, state):
+    from browser import browser_lookup
+    try:
+        fut = _BROWSER_EXECUTOR.submit(browser_lookup, plate, state)
+        return fut.result(timeout=110)
+    except concurrent.futures.TimeoutError:
+        raise UpstreamError(f"{state}: lookup timed out")
+
+
 def lookup(plate, state):
-    if state in BROWSER_STATES and os.getenv("PLAYWRIGHT", "0") == "1":
+    if state in BROWSER_STATES and _fsr_configured():
         try:
-            from browser import browser_lookup
+            from flaresolverr import fsr_lookup
+            result = fsr_lookup(plate, state)
+            result.update({"plate": plate, "state": state})
+            return result
         except ImportError:
             pass
-        else:
-            result = browser_lookup(plate, state)
+    if state in BROWSER_STATES and os.getenv("PLAYWRIGHT", "0") == "1":
+        try:
+            result = _run_browser(plate, state)
+        except ImportError:
+            result = None
+        if result is not None:
             result.update({"plate": plate, "state": state})
             return result
     provider = PROVIDERS[state]
