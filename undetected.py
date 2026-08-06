@@ -140,17 +140,49 @@ def _solve_recaptcha_v2(driver):
             driver.switch_to.default_content()
 
 
-def _flow_vic(driver, plate, wait):
-    field = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "#RegistrationNumbercar")))
-    _click(driver, field)
-    field.send_keys(plate)
+def _flow_vic(driver, plate, wait, vehicle_type="car"):
+    # Vicroads has separate registration fields for car vs motorcycle.
+    selector = ("#RegistrationNumbermotorcycle" if vehicle_type == "motorcycle"
+                else "#RegistrationNumbercar")
+    field = None
+    try:
+        field = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
+    except Exception:
+        field = None
+    if field is None:
+        # The type input may be hidden until its radio/label is selected.
+        for el in driver.find_elements(By.CSS_SELECTOR, "label, button, a, span, input[type=radio]"):
+            t = ((el.get_attribute("value") or "") + " " + (el.text or "")).strip().lower()
+            if t and vehicle_type in t and _displayed(el):
+                try:
+                    _click(driver, el)
+                except Exception:
+                    pass
+        try:
+            field = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
+        except Exception:
+            field = None
+    if field is None:
+        _fill_plate(driver, plate)
+        field = None
+        for inp in driver.find_elements(By.CSS_SELECTOR,
+                                        "input[type=text], input:not([type]), input[type=number]"):
+            if _displayed(inp):
+                field = inp
+                break
+        if field is not None:
+            _click(driver, field)
+            field.send_keys(plate)
+    else:
+        _click(driver, field)
+        field.send_keys(plate)
     btn = _find_submit(driver, labels=("search",))
     if btn is None:
         raise UpstreamError("VIC: search button not found")
     _click(driver, btn)
 
 
-def _flow_nsw(driver, plate, wait):
+def _flow_nsw(driver, plate, wait, vehicle_type='car'):
     try:
         field = driver.find_element(By.CSS_SELECTOR, "#plateNumberInput")
         _click(driver, field)
@@ -174,7 +206,7 @@ def _flow_nsw(driver, plate, wait):
             driver.switch_to.window(driver.window_handles[-1])
 
 
-def _flow_sa(driver, plate, wait):
+def _flow_sa(driver, plate, wait, vehicle_type='car'):
     wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#plateNumber")))
     field = driver.find_element(By.CSS_SELECTOR, "#plateNumber")
     _click(driver, field)
@@ -182,7 +214,7 @@ def _flow_sa(driver, plate, wait):
     _click(driver, driver.find_element(By.CSS_SELECTOR, "#step-1-2-submit"))
 
 
-def _flow_tas(driver, plate, wait):
+def _flow_tas(driver, plate, wait, vehicle_type='car'):
     wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[name=plate]")))
     field = driver.find_element(By.CSS_SELECTOR, "input[name=plate]")
     _click(driver, field)
@@ -193,7 +225,7 @@ def _flow_tas(driver, plate, wait):
     _click(driver, btn)
 
 
-def _flow_act(driver, plate, wait):
+def _flow_act(driver, plate, wait, vehicle_type='car'):
     try:
         field = driver.find_element(By.CSS_SELECTOR, "#plateNumber")
         _click(driver, field)
@@ -215,7 +247,7 @@ def _flow_act(driver, plate, wait):
 FLOWS = {"VIC": _flow_vic, "NSW": _flow_nsw, "SA": _flow_sa, "TAS": _flow_tas, "ACT": _flow_act}
 
 
-def uc_lookup(plate, state):
+def uc_lookup(plate, state, vehicle_type="car"):
     driver = _driver()
     try:
         print("uc: driver created, navigating", file=sys.stderr, flush=True)
@@ -224,7 +256,7 @@ def uc_lookup(plate, state):
         time.sleep(4)
         _dismiss_banners(driver)
         wait = WebDriverWait(driver, 25)
-        FLOWS[state](driver, plate, wait)
+        FLOWS[state](driver, plate, wait, vehicle_type)
         deadline = time.time() + RESULT_TIMEOUT
         while time.time() < deadline:
             time.sleep(2)

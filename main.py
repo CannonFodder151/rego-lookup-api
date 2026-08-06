@@ -15,6 +15,7 @@ class LookupRequest(BaseModel):
     state: str = Field(min_length=2, max_length=3)
     first_name: str | None = None
     last_name: str | None = None
+    vehicle_type: str = "car"
 
 
 class LookupResponse(BaseModel):
@@ -51,7 +52,7 @@ async def rego_lookup(
 
     plate = req.plate.strip().upper()
     try:
-        return await lookup(plate, state, req.first_name, req.last_name)
+        return await lookup(plate, state, req.first_name, req.last_name, req.vehicle_type)
     except NotFound:
         raise HTTPException(status_code=404, detail="registration not found")
     except UpstreamBlocked as e:

@@ -372,15 +372,16 @@ async def _run_browser(plate, state, first_name, last_name):
     raise UpstreamError(data.get("message") or f"{state}: failed")
 
 
-async def _run_uc(plate, state):
+async def _run_uc(plate, state, vehicle_type="car"):
     """undetected_chromedriver work runs in a killable subprocess (own process
     group) so a hung Chrome/chromedriver is reaped instead of leaking."""
-    cmd = [sys.executable, os.path.join(os.path.dirname(__file__), "uc_worker.py"), plate, state]
+    cmd = [sys.executable, os.path.join(os.path.dirname(__file__), "uc_worker.py"),
+           plate, state, vehicle_type]
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, start_new_session=True)
     try:
-        stdout, _ = await asyncio.to_thread(proc.communicate, timeout=55)
+        stdout, _ = await asyncio.to_thread(proc.communicate, timeout=45)
     except subprocess.TimeoutExpired:
         try:
             os.killpg(proc.pid, signal.SIGKILL)
@@ -410,18 +411,18 @@ def _uc_enabled():
     return os.getenv("UNDETECTED", "0") == "1"
 
 
-async def lookup(plate, state, first_name=None, last_name=None):
+async def lookup(plate, state, first_name=None, last_name=None, vehicle_type="car"):
     if state in UC_STATES and _uc_enabled():
         async with _UC_LOCK:
             try:
-                result = await _run_uc(plate, state)
+                result = await _run_uc(plate, state, vehicle_type)
             except ImportError:
                 result = None
             except UpstreamError as exc:
                 if isinstance(exc, (NotFound, UpstreamBlocked)):
                     raise
                 # Transient Chrome/session hang — retry once before giving up.
-                result = await _run_uc(plate, state)
+                result = await _run_uc(plate, state, vehicle_type)
         if result is not None:
             result.update({"plate": plate, "state": state})
             return result

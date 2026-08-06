@@ -14,7 +14,7 @@ import sys
 from undetected import uc_lookup  # noqa: E402  (sets up imports after cwd)
 from providers import NotFound, UpstreamBlocked, UpstreamError  # noqa: E402
 
-WATCHDOG_SECONDS = 50
+WATCHDOG_SECONDS = 40
 
 
 def _nuke(signum, frame):
@@ -23,10 +23,11 @@ def _nuke(signum, frame):
 
 def main():
     plate, state = sys.argv[1], sys.argv[2]
+    vehicle_type = sys.argv[3] if len(sys.argv) > 3 else "car"
     signal.signal(signal.SIGALRM, _nuke)
     signal.alarm(WATCHDOG_SECONDS)
     try:
-        result = uc_lookup(plate, state)
+        result = uc_lookup(plate, state, vehicle_type)
         print(json.dumps({"ok": True, "result": result}))
     except NotFound:
         print(json.dumps({"ok": False, "kind": "notfound"}))
