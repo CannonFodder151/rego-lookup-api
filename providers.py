@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 
@@ -371,20 +372,56 @@ async def _run_browser(plate, state, first_name, last_name):
     raise UpstreamError(data.get("message") or f"{state}: failed")
 
 
+async def _run_uc(plate, state):
+    """undetected_chromedriver work runs in a killable subprocess (own process
+    group) so a hung Chrome/chromedriver is reaped instead of leaking."""
+    cmd = [sys.executable, os.path.join(os.path.dirname(__file__), "uc_worker.py"), plate, state]
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, start_new_session=True)
+    try:
+        stdout, _ = await asyncio.to_thread(proc.communicate, timeout=55)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+        await asyncio.to_thread(proc.wait)
+        raise UpstreamError(f"{state}: lookup timed out")
+    stdout = (stdout or "").strip()
+    try:
+        data = json.loads(stdout.splitlines()[-1])
+    except Exception:
+        raise UpstreamError(f"{state}: uc worker failed: {stdout[:200]}")
+    if data.get("ok"):
+        return data["result"]
+    kind = data.get("kind")
+    if kind == "notfound":
+        raise NotFound(plate)
+    if kind == "blocked":
+        raise UpstreamBlocked(data.get("message") or f"{state}: blocked")
+    raise UpstreamError(data.get("message") or f"{state}: failed")
+
+
+_UC_LOCK = asyncio.Lock()
+
+
 def _uc_enabled():
     return os.getenv("UNDETECTED", "0") == "1"
 
 
 async def lookup(plate, state, first_name=None, last_name=None):
     if state in UC_STATES and _uc_enabled():
-        try:
-            from undetected import uc_lookup
-            result = await asyncio.wait_for(
-                asyncio.to_thread(uc_lookup, plate, state), timeout=170)
-        except asyncio.TimeoutError:
-            raise UpstreamError(f"{state}: lookup timed out")
-        except ImportError:
-            result = None
+        async with _UC_LOCK:
+            try:
+                result = await _run_uc(plate, state)
+            except ImportError:
+                result = None
+            except UpstreamError as exc:
+                if isinstance(exc, (NotFound, UpstreamBlocked)):
+                    raise
+                # Transient Chrome/session hang — retry once before giving up.
+                result = await _run_uc(plate, state)
         if result is not None:
             result.update({"plate": plate, "state": state})
             return result
