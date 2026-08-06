@@ -17,6 +17,13 @@ Request body:
 { "plate": "1ABC123", "state": "QLD" }
 ```
 
+`vehicle_type` is optional and defaults to `car`. Set it to `motorcycle` for
+bikes — VIC requires the type so the correct vicroads field is used:
+
+```json
+{ "plate": "3B4PV", "state": "VIC", "vehicle_type": "motorcycle" }
+```
+
 Optional for states that verify the owner (currently unused by the providers):
 
 ```json
@@ -85,3 +92,22 @@ All 8 states work. QLD uses plain HTTP; VIC uses `undetected-chromedriver` headf
 | ACT | Working (verified) — Wicket wizard + privacy checkbox |
 
 Respect each state site's terms of service and rate limits.
+
+## Motorcycle verification (2026-08-06)
+
+`vehicle_type=motorcycle` tested across states (unregistered sample plates —
+a clean `404 registration not found` confirms the flow ran):
+
+| State | Plate | Result |
+|---|---|---|
+| VIC | `3B4PV` | 404 (motorcycle field + vehicle-type dropdown selected) |
+| QLD | `1ABC1` | 404 |
+| NSW | `ABC12D` | 404 |
+| WA | `1AAA2B` | 404 |
+| SA | `1ABC2C` | 404 |
+| ACT | `1AB2CD` | 404 |
+| NT | `1A23B` | 502 — same as cars; NT site doesn't return a parseable result for this format |
+| TAS | `1ABCD3` | 502 — same as cars; TAS site doesn't return a parseable result for this format |
+
+NT/TAS 502s are pre-existing (identical for car regos of the same format),
+not motorcycle-specific.
