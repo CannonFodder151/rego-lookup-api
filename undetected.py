@@ -38,7 +38,11 @@ def _driver():
                 "--disable-blink-features=AutomationControlled",
                 "--disable-gpu", "--disable-software-rasterizer"):
         opts.add_argument(arg)
-    print("uc: launching Chrome", file=sys.stderr, flush=True)
+    binary = next((p for p in ("/usr/bin/google-chrome", "/usr/bin/chromium")
+                   if os.path.exists(p)), None)
+    if binary:
+        opts.binary_location = binary
+    print(f"uc: launching {binary or 'auto-detected'} Chrome", file=sys.stderr, flush=True)
     return uc.Chrome(options=opts, headless=False)
 
 

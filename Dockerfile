@@ -13,6 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt \
          wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
          && apt-get install -y ./google-chrome-stable_current_amd64.deb \
          && rm -f google-chrome-stable_current_amd64.deb; \
+       elif [ "$TARGETARCH" = "arm64" ]; then \
+         apt-get install -y --no-install-recommends chromium; \
        fi \
     && rm -rf /var/lib/apt/lists/*
 
