@@ -39,4 +39,5 @@ jobs:
         run: |
           set -euo pipefail
           docker buildx build --platform "${PLATFORMS}" --push \
-            -t "ghcr.io/cannonfodder151/rego-lookup:${TAG}" .
+            -t "ghcr.io/cannonfodder151/rego-lookup:${TAG}" \
+            -t "ghcr.io/cannonfodder151/rego-lookup-api:${TAG}" .
