@@ -381,7 +381,7 @@ async def _run_uc(plate, state, vehicle_type="car"):
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, start_new_session=True)
     try:
-        stdout, _ = await asyncio.to_thread(proc.communicate, timeout=45)
+        stdout, _ = await asyncio.to_thread(proc.communicate, timeout=90)
     except subprocess.TimeoutExpired:
         try:
             os.killpg(proc.pid, signal.SIGKILL)

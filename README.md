@@ -100,7 +100,7 @@ a clean `404 registration not found` confirms the flow ran):
 
 | State | Plate | Result |
 |---|---|---|
-| VIC | `FZR60` | 200 — real registered motorcycle (vehicle-type dropdown selected, `Registration-Number-motorcycle` field) |
+| VIC | `FZR60` | 200 — YAMAHA FZ6S / 2009 / BLACK / SOLO / VIN `JYARJ14487A000061` (motorcycle field `Registration-Number-motorcycle` + `VehicleType` select) |
 | VIC | `3B4PV` | 404 (motorcycle field + vehicle-type dropdown selected) |
 | QLD | `1ABC1` | 404 |
 | NSW | `ABC12D` | 404 |
