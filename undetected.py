@@ -50,7 +50,12 @@ def _driver():
         # undetected-chromedriver <3.5.x cannot download an aarch64 chromedriver
         # (hardcodes linux64). Use the distro driver so VIC works on arm64 hosts.
         kwargs["driver_executable_path"] = cd
-    return uc.Chrome(**kwargs)
+    driver = uc.Chrome(**kwargs)
+    # A hung page/CDP call must never block the worker forever: script calls
+    # (our poll reads the DOM via execute_script) and page loads get bounds.
+    driver.set_page_load_timeout(30)
+    driver.set_script_timeout(15)
+    return driver
 
 
 def _is_challenge(text):
