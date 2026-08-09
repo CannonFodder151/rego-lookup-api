@@ -13,8 +13,15 @@ jobs:
       - name: deps
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q xvfb
+          sudo apt-get install -y -q xvfb unzip
           python -m pip install -q selenium beautifulsoup4 undetected-chromedriver setuptools
+      - name: chromedriver
+        run: |
+          VER=$(/usr/bin/google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+')
+          wget -q "https://storage.googleapis.com/chrome-for-testing-public/${VER}/linux64/chromedriver-linux64.zip"
+          unzip -q -o chromedriver-linux64.zip
+          sudo cp chromedriver-linux64/chromedriver /usr/local/bin/
+          chromedriver --version
       - name: lookup FZR60 VIC motorcycle
         run: |
           xvfb-run -a python uc_worker.py FZR60 VIC motorcycle
