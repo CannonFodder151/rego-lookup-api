@@ -16,7 +16,7 @@ import time
 from undetected import uc_lookup  # noqa: E402  (sets up imports after cwd)
 from providers import NotFound, UpstreamBlocked, UpstreamError  # noqa: E402
 
-WATCHDOG_SECONDS = 40
+WATCHDOG_SECONDS = int(os.getenv("UC_WATCHDOG", "40"))
 
 
 def _nuke(signum, frame):
