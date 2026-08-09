@@ -282,6 +282,19 @@ def _flow_act(driver, plate, wait, vehicle_type='car'):
 FLOWS = {"VIC": _flow_vic, "NSW": _flow_nsw, "SA": _flow_sa, "TAS": _flow_tas, "ACT": _flow_act}
 
 
+def _wait_ready(driver, timeout=30):
+    """Wait for the Cloudflare managed challenge to clear (it usually resolves
+    in a few seconds for a real browser) before interacting with the form."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        html = driver.execute_script(
+            "return document.documentElement ? document.documentElement.outerHTML : ''")
+        text = re.sub(r"\s+", " ", BeautifulSoup(html, "html.parser").get_text(" ", strip=True))
+        if not _is_challenge(text):
+            return
+        time.sleep(2)
+
+
 def uc_lookup(plate, state, vehicle_type="car"):
     driver = _driver()
     try:
@@ -289,6 +302,7 @@ def uc_lookup(plate, state, vehicle_type="car"):
         driver.get(STATE_URLS[state])
         print("uc: navigated, waiting", file=sys.stderr, flush=True)
         time.sleep(4)
+        _wait_ready(driver)
         _dismiss_banners(driver)
         wait = WebDriverWait(driver, 25)
         FLOWS[state](driver, plate, wait, vehicle_type)
