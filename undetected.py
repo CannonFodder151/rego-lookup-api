@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import sys
 import time
 
@@ -43,7 +44,13 @@ def _driver():
     if binary:
         opts.binary_location = binary
     print(f"uc: launching {binary or 'auto-detected'} Chrome", file=sys.stderr, flush=True)
-    return uc.Chrome(options=opts, headless=False)
+    kwargs = {"options": opts, "headless": False}
+    cd = shutil.which("chromedriver")
+    if cd:
+        # undetected-chromedriver <3.5.x cannot download an aarch64 chromedriver
+        # (hardcodes linux64). Use the distro driver so VIC works on arm64 hosts.
+        kwargs["driver_executable_path"] = cd
+    return uc.Chrome(**kwargs)
 
 
 def _is_challenge(text):

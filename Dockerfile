@@ -14,8 +14,8 @@ RUN pip install --no-cache-dir -r requirements.txt \
          && apt-get install -y ./google-chrome-stable_current_amd64.deb \
          && rm -f google-chrome-stable_current_amd64.deb; \
        elif [ "$TARGETARCH" = "arm64" ]; then \
-         apt-get install -y --no-install-recommends chromium; \
-       fi \
+         apt-get install -y --no-install-recommends chromium chromium-driver; \
+         fi \
     && rm -rf /var/lib/apt/lists/*
 
 COPY . .
