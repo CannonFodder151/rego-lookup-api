@@ -26,4 +26,6 @@ jobs:
           "$HOME/.local/bin/chromedriver" --version
       - name: lookup FZR60 VIC motorcycle
         run: |
-          xvfb-run -a python uc_worker.py FZR60 VIC motorcycle
+          echo "chrome: $(/usr/bin/google-chrome --version)"
+          echo "driver: $(chromedriver --version)"
+          timeout 120 xvfb-run -a python -u uc_worker.py FZR60 VIC motorcycle
