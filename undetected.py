@@ -9,7 +9,7 @@ import setuptools  # noqa: F401  (distutils shim for undetected-chromedriver on 
 from bs4 import BeautifulSoup
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import Select, WebDriverWait
 
 from providers import (NotFound, UpstreamBlocked, UpstreamError, _extract_result,
                        _looks_like_not_found)
@@ -151,42 +151,35 @@ def _solve_recaptcha_v2(driver):
             driver.switch_to.default_content()
 
 
+_VIC_TYPE_VALUES = {"car": "car", "motorcycle": "motorcycle",
+                    "caravan": "caravan", "trailer": "caravan"}
+_VIC_FIELD_IDS = {"car": "RegistrationNumbercar",
+                  "motorcycle": "Registration-Number-motorcycle",
+                  "caravan": "Registration-Number-caravan"}
+
+
+def _select_option(driver, css, value):
+    try:
+        Select(driver.find_element(By.CSS_SELECTOR, css)).select_by_value(value)
+    except Exception:
+        pass
+
+
 def _flow_vic(driver, plate, wait, vehicle_type="car"):
-    # Vicroads has separate registration fields for car vs motorcycle.
-    selector = ("#RegistrationNumbermotorcycle" if vehicle_type == "motorcycle"
-                else "#RegistrationNumbercar")
-    field = None
+    # Vicroads gates each rego field behind a VehicleType <select>: the
+    # motorcycle input is #Registration-Number-motorcycle and stays hidden until
+    # the "Motorcycle" option is chosen (car field is #RegistrationNumbercar).
+    vtype = vehicle_type.lower()
+    _select_option(driver, "#VehicleType", _VIC_TYPE_VALUES.get(vtype, "car"))
+    _select_option(driver, "#VehicleIdentifier", "registration")
+    selector = "#" + _VIC_FIELD_IDS.get(vtype, "RegistrationNumbercar")
     try:
         field = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
     except Exception:
-        field = None
-    if field is None:
-        # The type input may be hidden until its radio/label is selected.
-        for el in driver.find_elements(By.CSS_SELECTOR, "label, button, a, span, input[type=radio]"):
-            t = ((el.get_attribute("value") or "") + " " + (el.text or "")).strip().lower()
-            if t and vehicle_type in t and _displayed(el):
-                try:
-                    _click(driver, el)
-                except Exception:
-                    pass
-        try:
-            field = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
-        except Exception:
-            field = None
-    if field is None:
-        _fill_plate(driver, plate)
-        field = None
-        for inp in driver.find_elements(By.CSS_SELECTOR,
-                                        "input[type=text], input:not([type]), input[type=number]"):
-            if _displayed(inp):
-                field = inp
-                break
-        if field is not None:
-            _click(driver, field)
-            field.send_keys(plate)
-    else:
-        _click(driver, field)
-        field.send_keys(plate)
+        _fill_plate(driver, plate, selector=selector)
+        return
+    _click(driver, field)
+    field.send_keys(plate)
     btn = _find_submit(driver, labels=("search",))
     if btn is None:
         raise UpstreamError("VIC: search button not found")
