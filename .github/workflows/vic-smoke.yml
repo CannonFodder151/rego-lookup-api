@@ -28,12 +28,4 @@ jobs:
         run: |
           echo "chrome: $(/usr/bin/google-chrome --version)"
           echo "driver: $(chromedriver --version)"
-          timeout 120 xvfb-run -a python -u diag_vic.py
-          echo "=== lookup ==="
           timeout 120 xvfb-run -a python -u uc_worker.py FZR60 VIC motorcycle
-      - name: upload diag
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: vic-diag
-          path: diag_vic.*

@@ -172,10 +172,30 @@ def _flow_vic(driver, plate, wait, vehicle_type="car"):
     vtype = vehicle_type.lower()
     _select_option(driver, "#VehicleType", _VIC_TYPE_VALUES.get(vtype, "car"))
     _select_option(driver, "#VehicleIdentifier", "registration")
+    # The site toggles fields via JS on select change; re-fire the change
+    # events (Select's option click doesn't always trigger their handler).
+    driver.execute_script(
+        "var s=document.querySelector('#VehicleType'),"
+        "i=document.querySelector('#VehicleIdentifier');"
+        "if(s){s.dispatchEvent(new Event('change',{bubbles:true}));"
+        "s.dispatchEvent(new Event('input',{bubbles:true}));}"
+        "if(i){i.dispatchEvent(new Event('change',{bubbles:true}));}")
     selector = "#" + _VIC_FIELD_IDS.get(vtype, "RegistrationNumbercar")
     try:
         field = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
     except Exception:
+        field = None
+    if field is None:
+        # Their handler didn't reveal the field — force-show it.
+        driver.execute_script(
+            "var el=document.querySelector(%r);"
+            "if(el){var w=el.closest('.mvc-input')||el;"
+            "w.classList.remove('hidden');el.style.display='';}" % selector)
+        try:
+            field = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
+        except Exception:
+            field = None
+    if field is None:
         _fill_plate(driver, plate, selector=selector)
         return
     _click(driver, field)
