@@ -22,9 +22,13 @@ try:
         text = re.sub(r"\s+", " ", BeautifulSoup(html, "html.parser").get_text(" ", strip=True))
         print(f"--- poll {i} ({len(text)} chars) ---", flush=True)
         print(text[:1200], flush=True)
-        m = re.search(r"(Make|Model|not found|not registered|please select|vehicle details|registration details)", text, re.I)
-        if m:
-            print("MATCH:", m.group(0), flush=True)
+        j = text.find("Vehicle type")
+        if j >= 0:
+            print("FORM:", text[j:j+500], flush=True)
+        for kw in ("error", "required", "valid", "not found", "not registered"):
+            k = text.lower().find(kw)
+            if k >= 0:
+                print(f"HIT[{kw}]:", text[max(0,k-120):k+180], flush=True)
         driver.save_screenshot(f"poll{i}.png")
 except Exception as e:
     print("ERR:", type(e).__name__, str(e)[:400], flush=True)

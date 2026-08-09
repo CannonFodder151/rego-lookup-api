@@ -191,11 +191,17 @@ def _flow_vic(driver, plate, wait, vehicle_type="car"):
     except Exception:
         field = None
     if field is None:
-        # Their handler didn't reveal the field — force-show it.
+        # Their handler didn't reveal the field — force-show it and hide the
+        # other rego/identifier fields (all are `required`; an empty visible
+        # car field would block HTML5 form submission).
         driver.execute_script(
-            "var el=document.querySelector(%r);"
-            "if(el){var w=el.closest('.mvc-input')||el;"
-            "w.classList.remove('hidden');el.style.display='';}" % selector)
+            "(function(){var target=%r;"
+            "var sels=['#RegistrationNumbercar','#Registration-Number-motorcycle',"
+            "'#Registration-Number-caravan','#VIN','#Chassis-Number','#PermitNumber'];"
+            "for(var i=0;i<sels.length;i++){var el=document.querySelector(sels[i]);"
+            "if(!el){continue;}var w=el.closest('.mvc-input')||el;"
+            "if(sels[i]===target){w.classList.remove('hidden');el.style.display='';}"
+            "else{w.classList.add('hidden');el.style.display='none';}}})()" % selector)
         try:
             field = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
         except Exception:
@@ -298,6 +304,10 @@ def uc_lookup(plate, state, vehicle_type="car"):
             if _looks_like_not_found(text):
                 raise NotFound(plate)
             result = _extract_result(text, html)
+            # Drop a bogus VIN (the form page's "Chassis number" label parses
+            # as one) so we don't return a false-positive success on the form.
+            if result.get("vin") and not re.fullmatch(r"[A-HJ-NPR-Z0-9]{17}", result["vin"] or ""):
+                result["vin"] = None
             if any(result.values()):
                 return result
         raise UpstreamError(f"{state}: vehicle details could not be retrieved")
