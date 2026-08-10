@@ -30,11 +30,5 @@ jobs:
           echo "driver: $(chromedriver --version)"
           for n in 1 2 3; do
             echo "=== attempt $n ==="
-            timeout 200 xvfb-run -a env UC_WATCHDOG=180 UC_DUMP_HTML=diag_result_$n.html python -u uc_worker.py FZR60 VIC motorcycle || echo "attempt $n failed"
+            timeout 200 xvfb-run -a env UC_WATCHDOG=180 python -u uc_worker.py FZR60 VIC motorcycle || echo "attempt $n failed"
           done
-      - name: upload result DOM
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: vic-result-dom
-          path: diag_result_*.html
