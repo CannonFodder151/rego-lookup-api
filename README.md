@@ -76,6 +76,31 @@ docker run -d --name rego-lookup -p 8000:8000 \
   rego-lookup
 ```
 
+## Deploy (auto — AUT-264)
+
+**Every push to `main` deploys automatically.** No manual step required.
+
+1. GitHub Actions (`build.yml`) triggers on push to `main` (and manual dispatch).
+2. The `build` job builds and pushes the multi-arch image:
+   `ghcr.io/cannonfodder151/rego-lookup:hosted` (+ GHCR/Docker Hub aliases).
+3. The `deploy` job then redeploys **both** production tiers via Portainer with
+   `PullImage: true`:
+   - **On-prem** — Portainer stack `plate-api-scraper` (EP2, `10.0.3.17:8011`),
+     stack id **75**.
+   - **Hosted** — Portainer stack `rego-lookup` (EP5, `152.69.188.133:8011`,
+     Oracle Cloud), stack id **85**.
+
+Both stacks pull the `:hosted` tag, so a rebuilt image is picked up on the next
+redeploy. The deploy job reads each stack's current compose from Portainer and
+re-applies it with `PullImage: true`, so config never drifts. It tolerates a
+reverse-proxy `504`/timeout on the PUT — Portainer applies the update
+server-side regardless.
+
+Credentials come from repo secrets: `PORTAINER_URL`, `PORTAINER_API_KEY`.
+
+Rollback: `PUT /api/stacks/{75|85}?endpointId={2|5}` with the previous compose
+or pin a specific image digest.
+
 ## State support (2026-08)
 
 All 8 states work. QLD uses plain HTTP; VIC uses `undetected-chromedriver` headful under Xvfb (`UNDETECTED=1`, defeats Cloudflare and returns the full VIN); NSW, SA, NT, TAS, WA, ACT use a Playwright **Firefox** worker run as a subprocess (`PLAYWRIGHT=1`) — a real Firefox passes the state sites' reCAPTCHA v2/v3 and JS-rendered checks without a solver.
