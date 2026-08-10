@@ -5,6 +5,7 @@ import re
 import signal
 import subprocess
 import sys
+import textwrap
 
 import requests
 from bs4 import BeautifulSoup
@@ -65,6 +66,251 @@ _LABELS = {
 _BODY_WORDS = {"wagon", "sedan", "hatchback", "hatch", "coupe", "ute", "utility", "truck",
                "suv", "van", "bus", "motorcycle", "scooter", "caravan", "trailer", "roadster",
                "convertible", "limousine", "pickup", "stationwagon", "mpv", "vanlight"}
+
+# Known vehicle makes registered in Australia. VIC's rego report shows Make and
+# Model combined in a single "Make" row (e.g. "YAMAHA FZ6S"), so we match the
+# longest make name as a prefix and treat the remainder as the model.
+_VEHICLE_MAKES = frozenset(textwrap.dedent("""
+    ABARTH
+    AC
+    ACURA
+    ADLY
+    AERO
+    AIYING
+    AJP
+    ALFA ROMEO
+    ALPINA
+    AM GENERAL
+    AMERICAN MOTORS
+    APRILIA
+    ARIEL
+    ASHOK LEYLAND
+    ASIA
+    ASTON MARTIN
+    ATC
+    ATLAS
+    AUDI
+    AUSTIN
+    AUSTIN HEALEY
+    AUVERLAND
+    AVANTI
+    BAJAJ
+    BAIC
+    BAJA
+    BEACH BUGGY
+    BEDFORD
+    BEIJING
+    BENELLI
+    BENTLEY
+    BERGER
+    BESTA
+    BIMOTA
+    BLAZE
+    BLUEBIRD
+    BMW
+    BOXER
+    BRABUS
+    BRILLIANCE
+    BUICK
+    BUFFALO
+    BUGATTI
+    BULTACO
+    BYD
+    CADILLAC
+    CALF
+    CAN-AM
+    CAPRI
+    CCM
+    CHANA
+    CHANGAN
+    CHERY
+    CHEVROLET
+    CHRYSLER
+    CITROEN
+    CLARK
+    CLASSIC
+    COACH
+    CODY
+    CORVETTE
+    CUB
+    CUSTOM
+    DAF
+    DAIHATSU
+    DAIQU
+    DODGE
+    DONGFENG
+    DUCATI
+    EAGLE
+    EGO
+    ELECTRIC
+    EXCALIBUR
+    FAW
+    FERRARI
+    FIAT
+    FISKER
+    FLYBO
+    FORD
+    FORD TRUCKS
+    FOTON
+    FRASER
+    FUJI
+    GAS GAS
+    GEELY
+    GENERAL MOTORS
+    GENESIS
+    GILERA
+    GINETTA
+    GLAS
+    GMC
+    GREAT WALL
+    GRINNALL
+    HAFEI
+    HANOMAG
+    HARLEY-DAVIDSON
+    HAWK
+    HEARTLAND
+    HERO
+    HILLMAN
+    HINDUSTAN
+    HOLDEN
+    HONDA
+    HUMMER
+    HYOSUNG
+    HYUNDAI
+    INFINITI
+    INNOCENTI
+    INTERNATIONAL
+    ISUZU
+    IVECO
+    JAC
+    JAGUAR
+    JEEP
+    JENSEN
+    JINCHENG
+    JIANGSU
+    JOHNSON
+    KAIYI
+    KAMA
+    KARMA
+    KAWASAKI
+    KIA
+    KINGWAY
+    KOENIGSEGG
+    LADA
+    LAMBRETTA
+    LAMBORGHINI
+    LANCIA
+    LAND ROVER
+    LEYLAND
+    LIFAN
+    LINCOLN
+    LINGBEN
+    LLOYD
+    LOTEC
+    LOTUS
+    MACK
+    MADAMO
+    MAGIRUS
+    MAHINDRA
+    MALAGUTI
+    MAN
+    MASERATI
+    MASTERS
+    MAXUS
+    MAYBACH
+    MAZDA
+    MCLAREN
+    MEGELLI
+    MERCEDES-BENZ
+    MERCEDES BENZ
+    MERCURY
+    MG
+    MIDAS
+    MINI
+    MITSUBISHI
+    MONTESA
+    MORGAN
+    MOTOBECANE
+    MOTO-GUZZI
+    MOTOR
+    MOWAG
+    MZ
+    NISSAN
+    NSU
+    OLDSMOBILE
+    OPEL
+    OSCA
+    OSSA
+    PANHARD
+    PEERLESS
+    PEGASO
+    PEUGEOT
+    PIAGGIO
+    PLYMOUTH
+    PONTIAC
+    PORSCHE
+    PRESTIGE
+    PROTON
+    PUMA
+    QIJIANG
+    RANGE ROVER
+    RELIANT
+    RENAULT
+    RIDLEY
+    RIEJU
+    RIVA
+    ROLLS-ROYCE
+    ROVER
+    ROYAL ENFIELD
+    SAAB
+    SANTANA
+    SEAT
+    SETRA
+    SHANGHAI
+    SHINERAY
+    SIMCA
+    SINGER
+    SKODA
+    SKYGO
+    SMART
+    SSANGYONG
+    STEYR
+    SUBARU
+    SUZUKI
+    SYM
+    TATA
+    TESLA
+    TIGER
+    TOYOTA
+    TRIUMPH
+    TVS
+    URAL
+    VAUXHALL
+    VELOCETTE
+    VESPA
+    VOLKSWAGEN
+    VOLVO
+    WARTBURG
+    WESTFIELD
+    WILLYS
+    XINLING
+    YAMAHA
+    ZENN
+    ZIL
+    ZONGSHEN
+    ZX AUTO
+""").strip().splitlines())
+
+
+def _split_make_model(val):
+    """Split a combined 'MAKE MODEL' string; returns (make, model)."""
+    tokens = val.split()
+    if len(tokens) < 2:
+        return val, None
+    for i in range(len(tokens), 0, -1):
+        if " ".join(tokens[:i]).upper() in _VEHICLE_MAKES:
+            return " ".join(tokens[:i]), " ".join(tokens[i:]) or None
+    return " ".join(tokens[:-1]), tokens[-1]
 
 
 def _parse_description(out):
@@ -178,6 +424,11 @@ def _extract_result(text, html=None):
         for k in result:
             if dom.get(k):
                 result[k] = dom[k]
+    # Some states (notably VIC) report Make and Model combined in the Make
+    # field, e.g. "YAMAHA FZ6S". Split it into the two fields when no separate
+    # model was found.
+    if result["make"] and not result["model"]:
+        result["make"], result["model"] = _split_make_model(result["make"])
     return result
 
 
