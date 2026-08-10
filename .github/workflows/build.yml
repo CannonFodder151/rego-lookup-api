@@ -65,15 +65,23 @@ jobs:
           BASE="${PORTAINER_URL%/}"
           redeploy() {
             local stack_id="$1" endpoint_id="$2"
-            local sc body
+            local sc body code
             sc="$(curl -fsS -H "X-API-Key: ${PORTAINER_API_KEY}" \
               "${BASE}/api/stacks/${stack_id}/file?endpointId=${endpoint_id}" \
               | python3 -c 'import json,sys; print(json.load(sys.stdin)["StackFileContent"])')"
             body="$(python3 -c 'import json,sys; print(json.dumps({"StackFileContent": sys.argv[1], "Env": [], "Prune": False, "PullImage": True}))' "$sc")"
-            curl -fsS -X PUT -H "X-API-Key: ${PORTAINER_API_KEY}" \
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 300 \
+              -X PUT -H "X-API-Key: ${PORTAINER_API_KEY}" \
               -H "Content-Type: application/json" --data "$body" \
-              "${BASE}/api/stacks/${stack_id}?endpointId=${endpoint_id}" > /dev/null
-            echo "redeployed stack ${stack_id} on endpoint ${endpoint_id}"
+              "${BASE}/api/stacks/${stack_id}?endpointId=${endpoint_id}" || true)"
+            echo "redeploy ${stack_id} on endpoint ${endpoint_id}: HTTP ${code}"
+            # PullImage redeploy is async server-side; 504 just means the
+            # reverse proxy gave up waiting — Portainer still applies it.
+            case "${code}" in
+              200|201|202|204) : ;;
+              504|000) echo "stack ${stack_id}: update triggered (proxy timeout, Portainer applying)"; ;;
+              *) echo "::error::stack ${stack_id} update failed: HTTP ${code}"; exit 1; ;;
+            esac
           }
           redeploy 75 2   # on-prem plate-api-scraper (10.0.3.17:8011)
           redeploy 85 5   # hosted rego-lookup (152.69.188.133:8011)
