@@ -63,12 +63,30 @@ jobs:
         run: |
           set -euo pipefail
           BASE="${PORTAINER_URL%/}"
+          get_file() {
+            # Portainer can briefly 504 while the previous stack is still
+            # applying (image pull). Retry up to 10x with backoff.
+            local stack_id="$1" endpoint_id="$2" n=0 code sc=""
+            while [ "${n}" -lt 10 ]; do
+              code="$(curl -sS -o /tmp/sc.json -w '%{http_code}' --max-time 120 \
+                -H "X-API-Key: ${PORTAINER_API_KEY}" \
+                "${BASE}/api/stacks/${stack_id}/file?endpointId=${endpoint_id}" || true)"
+              if [ "${code}" = "200" ]; then
+                sc="$(python3 -c 'import json,sys; print(json.load(open("/tmp/sc.json"))["StackFileContent"])')"
+                echo "${sc}"
+                return 0
+              fi
+              n=$((n+1))
+              echo "get_file ${stack_id} HTTP ${code} (attempt ${n}/10)" >&2
+              sleep 10
+            done
+            echo "::error::could not fetch stack ${stack_id} file (last HTTP ${code})" >&2
+            return 1
+          }
           redeploy() {
             local stack_id="$1" endpoint_id="$2"
             local sc body code
-            sc="$(curl -fsS -H "X-API-Key: ${PORTAINER_API_KEY}" \
-              "${BASE}/api/stacks/${stack_id}/file?endpointId=${endpoint_id}" \
-              | python3 -c 'import json,sys; print(json.load(sys.stdin)["StackFileContent"])')"
+            sc="$(get_file "${stack_id}" "${endpoint_id}")" || exit 1
             body="$(python3 -c 'import json,sys; print(json.dumps({"StackFileContent": sys.argv[1], "Env": [], "Prune": False, "PullImage": True}))' "$sc")"
             code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 300 \
               -X PUT -H "X-API-Key: ${PORTAINER_API_KEY}" \
