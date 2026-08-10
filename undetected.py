@@ -323,6 +323,12 @@ def uc_lookup(plate, state, vehicle_type="car"):
             if result.get("vin") and not re.fullmatch(r"[A-HJ-NPR-Z0-9]{17}", result["vin"] or ""):
                 result["vin"] = None
             if any(result.values()):
+                if os.getenv("UC_DUMP_HTML"):
+                    try:
+                        with open(os.getenv("UC_DUMP_HTML"), "w") as fh:
+                            fh.write(html)
+                    except OSError:
+                        pass
                 return result
         raise UpstreamError(f"{state}: vehicle details could not be retrieved")
     except (NotFound, UpstreamBlocked, UpstreamError):
