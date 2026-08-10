@@ -1,6 +1,8 @@
-name: Build rego-lookup image (multi-arch)
+name: Build rego-lookup image (multi-arch) + auto-deploy
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       tag:
@@ -39,8 +41,8 @@ jobs:
 
       - name: Build and push
         env:
-          TAG: ${{ github.event.inputs.tag }}
-          PLATFORMS: ${{ github.event.inputs.platforms }}
+          TAG: ${{ github.event.inputs.tag || 'hosted' }}
+          PLATFORMS: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}
         run: |
           set -euo pipefail
           docker buildx build --platform "${PLATFORMS}" --push \
@@ -48,3 +50,32 @@ jobs:
             -t "ghcr.io/cannonfodder151/rego-lookup-api:${TAG}" \
             -t "cannonfodder151/rego-lookup-api:${TAG}" \
             -t "cannonfodder151/rego-lookup-api:latest" .
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || github.event.inputs.tag == 'hosted' }}
+    steps:
+      - name: Auto-redeploy both stacks via Portainer (AUT-264)
+        env:
+          PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+          PORTAINER_API_KEY: ${{ secrets.PORTAINER_API_KEY }}
+        run: |
+          set -euo pipefail
+          BASE="${PORTAINER_URL%/}"
+          redeploy() {
+            local stack_id="$1" endpoint_id="$2"
+            local sc
+            sc="$(curl -fsS -H "X-API-Key: ${PORTAINER_API_KEY}" \
+              "${BASE}/api/stacks/${stack_id}/file?endpointId=${endpoint_id}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["StackFileContent"])')"
+            python3 - "$sc" <<'PY' | curl -fsS -X PUT -H "X-API-Key: ${PORTAINER_API_KEY}" \
+                -H "Content-Type: application/json" --data-binary @- \
+                "${BASE}/api/stacks/${stack_id}?endpointId=${endpoint_id}" > /dev/null
+            import json, sys
+            print(json.dumps({"StackFileContent": sys.argv[1], "Env": [], "Prune": False, "PullImage": True}))
+            PY
+            echo "redeployed stack ${stack_id} on endpoint ${endpoint_id}"
+          }
+          redeploy 75 2   # on-prem plate-api-scraper (10.0.3.17:8011)
+          redeploy 85 5   # hosted rego-lookup (152.69.188.133:8011)

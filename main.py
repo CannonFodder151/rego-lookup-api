@@ -5,7 +5,9 @@ from pydantic import BaseModel, Field
 
 from providers import UpstreamBlocked, UpstreamError, NotFound, STATES, lookup
 
-app = FastAPI(title="Rego Lookup API", version="1.0.0")
+app = FastAPI(title="Rego Lookup API", version="1.1.0")
+
+APP_VERSION = "1.1.0"
 
 API_KEY = os.getenv("API_KEY", "")
 
@@ -31,7 +33,7 @@ class LookupResponse(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": APP_VERSION}
 
 
 @app.post("/lookup", response_model=LookupResponse)
