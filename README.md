@@ -92,12 +92,18 @@ requests cannot spawn unbounded Chrome/Firefox processes. VIC's
 
 ```bash
 docker build -t rego-lookup .
-docker run -d --name rego-lookup -p 8000:8000 \
+docker run -d --name rego-lookup -p 127.0.0.1:8000:8000 \
   -e API_KEY='<generate-long-random>' \
   -e PLAYWRIGHT=1 \
   -e UNDETECTED=1 \
   rego-lookup
 ```
+
+**Security:** bind to loopback/private interfaces only (`127.0.0.1:PORT:PORT`).
+Do not publish on a public IP — `/lookup` sends the static API key in cleartext
+and has no TLS. Consumers on the same host (or a shared docker network, e.g.
+`autobrain-hosted_default`) reach it by `localhost` / container name; nothing
+from the internet should ever reach it. See AUT-316.
 
 ## Deploy (auto — AUT-264)
 
