@@ -93,7 +93,7 @@ requests cannot spawn unbounded Chrome/Firefox processes. VIC's
 ```bash
 docker build -t rego-lookup .
 docker run -d --name rego-lookup -p 8000:8000 \
-  -e API_KEY='change-me' \
+  -e API_KEY='<generate-long-random>' \
   -e PLAYWRIGHT=1 \
   -e UNDETECTED=1 \
   rego-lookup

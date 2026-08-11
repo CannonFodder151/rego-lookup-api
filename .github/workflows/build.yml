@@ -101,5 +101,17 @@ jobs:
               *) echo "::error::stack ${stack_id} update failed: HTTP ${code}"; exit 1; ;;
             esac
           }
+          guard_placeholder() {
+            local stack_id="$1" endpoint_id="$2"
+            local sc
+            sc="$(get_file "${stack_id}" "${endpoint_id}")" || exit 1
+            if grep -qE 'API_KEY[=: ]+(<generate-long-random>|change-me[^[:space:]]*)' <<<"${sc}"; then
+              echo "::error::stack ${stack_id} still has placeholder API_KEY; refusing deploy (AUT-320)" >&2
+              exit 1
+            fi
+            echo "stack ${stack_id}: API_KEY placeholder check passed"
+          }
+          guard_placeholder 75 2   # on-prem plate-api-scraper (10.0.3.17:8011)
+          guard_placeholder 85 5   # hosted rego-lookup (152.69.188.133:8011)
           redeploy 75 2   # on-prem plate-api-scraper (10.0.3.17:8011)
           redeploy 85 5   # hosted rego-lookup (152.69.188.133:8011)
