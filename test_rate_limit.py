@@ -42,6 +42,7 @@ def test_per_ip_limit():
         assert r.status_code == 200, r.text
     r = _lookup("1.2.3.4")
     assert r.status_code == 429, r.text
+    assert r.headers.get("retry-after"), "429 must carry Retry-After"
     # A different IP shares neither bucket and still works.
     assert _lookup("5.6.7.8").status_code == 200
 

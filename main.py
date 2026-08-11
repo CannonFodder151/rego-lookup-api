@@ -1,6 +1,6 @@
 import os
 
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -36,7 +36,7 @@ def _api_key(request: Request) -> str:
     return key or "anon"
 
 
-limiter = Limiter(key_func=_api_key)
+limiter = Limiter(key_func=_api_key, headers_enabled=True)
 
 app = FastAPI(title="Rego Lookup API", version=APP_VERSION)
 app.state.limiter = limiter
@@ -72,6 +72,7 @@ def health():
 @limiter.limit(RATE_LIMIT_KEY, key_func=_api_key)
 async def rego_lookup(
     request: Request,
+    response: Response,
     req: LookupRequest,
     x_api_key: str | None = Header(None),
     authorization: str | None = Header(None),
