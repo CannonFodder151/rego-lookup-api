@@ -1,3 +1,4 @@
+import hmac
 import os
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
@@ -80,7 +81,7 @@ async def rego_lookup(
     key = x_api_key
     if authorization and authorization.lower().startswith("bearer "):
         key = authorization[7:]
-    if not API_KEY or key != API_KEY:
+    if not API_KEY or not hmac.compare_digest(key or "", API_KEY):
         raise HTTPException(status_code=401, detail="invalid API key")
 
     state = req.state.strip().upper()
