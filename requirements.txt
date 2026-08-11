@@ -1,5 +1,6 @@
 fastapi==0.115.6
 uvicorn==0.34.0
+slowapi==0.1.9
 pydantic==2.13.4
 requests==2.32.3
 beautifulsoup4==4.12.3

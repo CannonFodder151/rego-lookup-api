@@ -55,7 +55,23 @@ Status codes:
 - `400` invalid/missing state or plate
 - `401` missing or wrong API key
 - `404` registration not found
+- `429` rate limit exceeded (per-IP or per-API-key; `Retry-After` header set)
 - `502` upstream state site unreachable / blocked
+
+## Rate limiting (AUT-315)
+
+Every `/lookup` is rate limited twice — once per client IP and once per API key —
+to prevent cost/compute abuse and excessive scraping of state sites. Excess
+requests return `429` with a `Retry-After` header. Client IPs are read from
+`X-Forwarded-For` (first entry) so they stay correct behind a reverse proxy.
+
+`/health` is never rate limited.
+
+## Concurrency
+
+Browser-based lookups (Playwright subprocess workers) are capped so a burst of
+requests cannot spawn unbounded Chrome/Firefox processes. VIC's
+`undetected-chromedriver` worker is already serialised behind a lock.
 
 ## Configuration
 
@@ -64,6 +80,9 @@ Status codes:
 | `API_KEY` | yes | Key clients must present. Set a long random string. |
 | `PLAYWRIGHT` | no | `1` enables the Playwright Firefox worker for NSW/SA/NT/TAS/WA/ACT. |
 | `UNDETECTED` | no | `1` enables the `undetected-chromedriver` provider for VIC. |
+| `RATE_LIMIT_IP` | no | Per-IP rate limit on `/lookup`. Default `30/minute`. |
+| `RATE_LIMIT_KEY` | no | Per-API-key rate limit on `/lookup`. Default `120/minute`. |
+| `BROWSER_MAX_CONCURRENCY` | no | Max concurrent browser worker subprocesses. Default `2`. |
 
 ## Run
 

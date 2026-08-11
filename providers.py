@@ -593,9 +593,20 @@ def _browser_enabled():
     return os.getenv("PLAYWRIGHT", "0") == "1" or _fsr_configured()
 
 
+_BROWSER_MAX_CONCURRENCY = max(1, int(os.getenv("BROWSER_MAX_CONCURRENCY", "2")))
+_BROWSER_SEM = asyncio.Semaphore(_BROWSER_MAX_CONCURRENCY)
+
+
 async def _run_browser(plate, state, first_name, last_name):
     # Playwright work runs in a subprocess: fresh process = reliable timeouts,
     # whereas in-process Playwright inside uvicorn's event loop hangs on native timeouts.
+    # The semaphore caps how many browser subprocesses can run at once (each
+    # takes tens of seconds and hits an upstream state site).
+    async with _BROWSER_SEM:
+        return await _run_browser_inner(plate, state, first_name, last_name)
+
+
+async def _run_browser_inner(plate, state, first_name, last_name):
     cmd = [sys.executable, os.path.join(os.path.dirname(__file__), "runner.py"), plate, state]
     if first_name:
         cmd.append(first_name)

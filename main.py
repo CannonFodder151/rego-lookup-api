@@ -1,15 +1,46 @@
 import os
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
+
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from providers import UpstreamBlocked, UpstreamError, NotFound, STATES, lookup
 
-app = FastAPI(title="Rego Lookup API", version="1.1.0")
-
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 
 API_KEY = os.getenv("API_KEY", "")
+
+# Per-IP and per-API-key limits on /lookup (each lookup scrapes a state site).
+# In-memory buckets are fine: each deployment runs a single uvicorn worker.
+# Tune with RATE_LIMIT_IP / RATE_LIMIT_KEY env vars.
+RATE_LIMIT_IP = os.getenv("RATE_LIMIT_IP", "30/minute")
+RATE_LIMIT_KEY = os.getenv("RATE_LIMIT_KEY", "120/minute")
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return get_remote_address(request)
+
+
+def _api_key(request: Request) -> str:
+    key = request.headers.get("x-api-key")
+    if not key:
+        auth = request.headers.get("authorization")
+        if auth and auth.lower().startswith("bearer "):
+            key = auth[7:].strip()
+    return key or "anon"
+
+
+limiter = Limiter(key_func=_api_key)
+
+app = FastAPI(title="Rego Lookup API", version=APP_VERSION)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 class LookupRequest(BaseModel):
@@ -37,7 +68,10 @@ def health():
 
 
 @app.post("/lookup", response_model=LookupResponse)
+@limiter.limit(RATE_LIMIT_IP, key_func=_client_ip)
+@limiter.limit(RATE_LIMIT_KEY, key_func=_api_key)
 async def rego_lookup(
+    request: Request,
     req: LookupRequest,
     x_api_key: str | None = Header(None),
     authorization: str | None = Header(None),
