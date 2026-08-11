@@ -1,8 +1,10 @@
 import hmac
 import os
+import re
+from typing import Literal
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -10,7 +12,7 @@ from slowapi.util import get_remote_address
 
 from providers import UpstreamBlocked, UpstreamError, NotFound, STATES, lookup
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 
 API_KEY = os.getenv("API_KEY", "")
 
@@ -44,12 +46,25 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
+# Plate normalised (strip + upper) then matched against AU plate shapes:
+# 1-8 alphanumerics. Matches autobrain backend/app/services/rego.py:_valid_au_plate.
+_PLATE_RE = re.compile(r"^[A-Z0-9]{1,8}$")
+
+
 class LookupRequest(BaseModel):
-    plate: str = Field(min_length=1, max_length=20)
+    plate: str
     state: str = Field(min_length=2, max_length=3)
     first_name: str | None = None
     last_name: str | None = None
-    vehicle_type: str = "car"
+    vehicle_type: Literal["car", "motorcycle"] = "car"
+
+    @field_validator("plate")
+    @classmethod
+    def _normalise_plate(cls, v: str) -> str:
+        v = v.strip().upper()
+        if not _PLATE_RE.match(v):
+            raise ValueError("plate must be 1-8 letters/digits (A-Z, 0-9)")
+        return v
 
 
 class LookupResponse(BaseModel):
@@ -88,7 +103,7 @@ async def rego_lookup(
     if state not in STATES:
         raise HTTPException(status_code=400, detail="state must be one of VIC, NSW, QLD, WA, SA, NT, TAS, ACT")
 
-    plate = req.plate.strip().upper()
+    plate = req.plate
     try:
         return await lookup(plate, state, req.first_name, req.last_name, req.vehicle_type)
     except NotFound:

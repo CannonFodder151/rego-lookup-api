@@ -24,6 +24,9 @@ bikes — VIC requires the type so the correct vicroads field is used:
 { "plate": "3B4PV", "state": "VIC", "vehicle_type": "motorcycle" }
 ```
 
+`plate` is normalised (trimmed, upper-cased) and must match 1-8 letters/digits
+(`A-Z`, `0-9`) — malformed plates return `422`.
+
 Optional for states that verify the owner (currently unused by the providers):
 
 ```json
@@ -52,9 +55,10 @@ Response:
 Status codes:
 
 - `200` found
-- `400` invalid/missing state or plate
+- `400` invalid state
 - `401` missing or wrong API key
 - `404` registration not found
+- `422` malformed request — `plate` must be 1-8 letters/digits (A-Z, 0-9, normalised to upper case) and `vehicle_type` must be `car` or `motorcycle`
 - `429` rate limit exceeded (per-IP or per-API-key; `Retry-After` header set)
 - `502` upstream state site unreachable / blocked
 
