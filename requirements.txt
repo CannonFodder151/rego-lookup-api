@@ -2,7 +2,7 @@ fastapi==0.115.6
 uvicorn==0.34.0
 slowapi==0.1.9
 pydantic==2.13.4
-requests>=2.33.0
+requests==2.34.2
 beautifulsoup4==4.12.3
 playwright==1.62.0
 playwright-stealth==2.0.3
