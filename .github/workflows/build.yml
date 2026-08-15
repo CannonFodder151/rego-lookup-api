@@ -16,7 +16,8 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    runs-on: [self-hosted, linux, x64]
     permissions:
       contents: read
       packages: write
@@ -53,7 +54,7 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     if: ${{ github.event_name == 'push' || github.event.inputs.tag == 'hosted' }}
     steps:
       - name: Auto-redeploy both stacks via Portainer (AUT-264)
