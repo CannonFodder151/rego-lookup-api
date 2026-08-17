@@ -7,9 +7,10 @@ on:
     # resolved tree (playwright/selenium/undetected-chromedriver deps) that a
     # direct-pin review cannot see. Self-hosted runner (private repo: GitHub-
     # hosted minutes are billing-blocked). The runner host's pip traffic is
-    # proxied to a stale mirror that cannot resolve uvicorn==0.34.0 — even an
-    # explicit --index-url is intercepted — so the audit runs inside a python
-    # container whose network reaches live PyPI (AUT-1019).
+    # proxied to a stale mirror (uvicorn==0.34.0 missing), so the audit runs
+    # inside the deployed image's container: its network reaches live PyPI and
+    # its installed site-packages ARE the fully-resolved production tree —
+    # no source mount, no resolution, audits exactly what ships (AUT-1019).
     - cron: '0 6 * * 1'
   workflow_dispatch:
 
@@ -18,14 +19,12 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: [self-hosted, linux, x64]
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Fail on known vulns in the resolved tree
+      - name: Fail on known vulns in the deployed image
         id: audit
         run: |
           set -euo pipefail
-          docker run --rm -v "${PWD}:/repo" -w /repo python:3.12-slim \
-            sh -c "pip install --quiet pip-audit && pip-audit --index-url https://pypi.org/simple -r requirements.txt" \
+          docker run --rm cannonfodder151/rego-lookup-api:hosted \
+            sh -c "pip install --quiet pip-audit && pip-audit" \
             || { echo "result=found" >> "$GITHUB_OUTPUT"; exit 1; }
           echo "result=clean" >> "$GITHUB_OUTPUT"
 
