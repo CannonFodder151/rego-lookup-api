@@ -5,14 +5,16 @@ on:
     # Weekly, Monday 06:00 UTC, same cadence as the autobrain monorepo scan
     # (AUT-1019). A full-resolution (transitive) audit catches CVEs in the
     # resolved tree (playwright/selenium/undetected-chromedriver deps) that a
-    # direct-pin review cannot see.
+    # direct-pin review cannot see. GitHub-hosted runner: the self-hosted
+    # runner's pip index is a stale mirror that cannot resolve
+    # uvicorn==0.34.0 (AUT-1019).
     - cron: '0 6 * * 1'
   workflow_dispatch:
 
 jobs:
   audit:
     if: github.event_name != 'pull_request'
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
