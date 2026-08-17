@@ -6,9 +6,10 @@ on:
     # (AUT-1019). A full-resolution (transitive) audit catches CVEs in the
     # resolved tree (playwright/selenium/undetected-chromedriver deps) that a
     # direct-pin review cannot see. Self-hosted runner (private repo: GitHub-
-    # hosted minutes are billing-blocked); PIP_INDEX_URL forces the live PyPI
-    # index because the self-hosted runner's global pip mirror is stale and
-    # cannot resolve uvicorn==0.34.0 (AUT-1019).
+    # hosted minutes are billing-blocked). The runner host's pip traffic is
+    # proxied to a stale mirror that cannot resolve uvicorn==0.34.0 — even an
+    # explicit --index-url is intercepted — so the audit runs inside a python
+    # container whose network reaches live PyPI (AUT-1019).
     - cron: '0 6 * * 1'
   workflow_dispatch:
 
@@ -16,19 +17,15 @@ jobs:
   audit:
     if: github.event_name != 'pull_request'
     runs-on: [self-hosted, linux, x64]
-    env:
-      PIP_INDEX_URL: https://pypi.org/simple
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install pip-audit
-        run: pip install --quiet pip-audit
 
       - name: Fail on known vulns in the resolved tree
         id: audit
         run: |
           set -euo pipefail
-          pip-audit --index-url https://pypi.org/simple -r requirements.txt \
+          docker run --rm -v "${PWD}:/repo" -w /repo python:3.12-slim \
+            sh -c "pip install --quiet pip-audit && pip-audit --index-url https://pypi.org/simple -r requirements.txt" \
             || { echo "result=found" >> "$GITHUB_OUTPUT"; exit 1; }
           echo "result=clean" >> "$GITHUB_OUTPUT"
 
