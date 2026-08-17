@@ -23,6 +23,9 @@ jobs:
         id: audit
         run: |
           set -euo pipefail
+          # docker run would reuse a stale local tag by default; force a fresh
+          # pull so the scan audits the deployed image as rebuilt (AUT-1028).
+          docker pull cannonfodder151/rego-lookup-api:hosted
           docker run --rm cannonfodder151/rego-lookup-api:hosted \
             sh -c "pip install --quiet pip-audit && pip-audit" \
             || { echo "result=found" >> "$GITHUB_OUTPUT"; exit 1; }
