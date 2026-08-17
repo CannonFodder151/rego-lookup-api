@@ -3,6 +3,10 @@ name: Build rego-lookup image (multi-arch) + auto-deploy
 on:
   push:
     branches: [main]
+    paths-ignore:
+      # Workflow/doc-only changes (e.g. the weekly security scan) must not
+      # rebuild multi-arch images or redeploy both prod stacks (AUT-1019).
+      - '.github/**'
   workflow_dispatch:
     inputs:
       tag:
