@@ -66,8 +66,14 @@ Status codes:
 
 Every `/lookup` is rate limited twice — once per client IP and once per API key —
 to prevent cost/compute abuse and excessive scraping of state sites. Excess
-requests return `429` with a `Retry-After` header. Client IPs are read from
-`X-Forwarded-For` (first entry) so they stay correct behind a reverse proxy.
+requests return `429` with a `Retry-After` header.
+
+Client IPs come from the socket address by default (AUT-1476). `X-Forwarded-For`
+is honoured only when the direct peer is in the `TRUSTED_PROXIES` allowlist
+(comma-separated IPs/CIDRs, e.g. your reverse-proxy docker subnet); in that case
+the rightmost non-trusted hop wins, so spoofed entries appended by clients are
+ignored. With no allowlist set, client-supplied XFF headers cannot influence
+rate-limit buckets.
 
 `/health` is never rate limited.
 
@@ -86,6 +92,7 @@ requests cannot spawn unbounded Chrome/Firefox processes. VIC's
 | `UNDETECTED` | no | `1` enables the `undetected-chromedriver` provider for VIC. |
 | `RATE_LIMIT_IP` | no | Per-IP rate limit on `/lookup`. Default `30/minute`. |
 | `RATE_LIMIT_KEY` | no | Per-API-key rate limit on `/lookup`. Default `120/minute`. |
+| `TRUSTED_PROXIES` | no | Comma-separated IPs/CIDRs allowed to set `X-Forwarded-For`. Unset: XFF ignored, socket address used. |
 | `BROWSER_MAX_CONCURRENCY` | no | Max concurrent browser worker subprocesses. Default `2`. |
 
 ## Run
