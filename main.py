@@ -1,4 +1,5 @@
 import hmac
+import ipaddress
 import os
 import re
 from typing import Literal
@@ -12,7 +13,7 @@ from slowapi.util import get_remote_address
 
 from providers import UpstreamBlocked, UpstreamError, NotFound, STATES, lookup
 
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 
 API_KEY = os.getenv("API_KEY", "")
 
@@ -22,12 +23,36 @@ API_KEY = os.getenv("API_KEY", "")
 RATE_LIMIT_IP = os.getenv("RATE_LIMIT_IP", "30/minute")
 RATE_LIMIT_KEY = os.getenv("RATE_LIMIT_KEY", "120/minute")
 
+# X-Forwarded-For is trusted only when the direct socket peer is in this
+# allowlist (comma-separated IPs/CIDRs, e.g. the reverse-proxy docker subnet).
+# Unset/empty (the default): the socket address is always used and client
+# XFF headers are ignored, so the per-IP limit cannot be evaded by spoofing.
+TRUSTED_NETWORKS = [
+    ipaddress.ip_network(p.strip(), strict=False)
+    for p in os.getenv("TRUSTED_PROXIES", "").split(",")
+    if p.strip()
+]
+
 
 def _client_ip(request: Request) -> str:
+    peer = get_remote_address(request)
     fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",")[0].strip()
-    return get_remote_address(request)
+    if TRUSTED_NETWORKS and fwd:
+        try:
+            peer_ip = ipaddress.ip_address(peer)
+        except ValueError:
+            return peer
+        if any(peer_ip in net for net in TRUSTED_NETWORKS):
+            # Rightmost non-trusted hop is the real client; proxies overwrite
+            # rather than strip, so walk the chain backwards.
+            for hop in reversed([h.strip() for h in fwd.split(",")]):
+                try:
+                    hop_ip = ipaddress.ip_address(hop)
+                except ValueError:
+                    return hop
+                if not any(hop_ip in net for net in TRUSTED_NETWORKS):
+                    return hop
+    return peer
 
 
 def _api_key(request: Request) -> str:
