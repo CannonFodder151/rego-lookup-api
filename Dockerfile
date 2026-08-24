@@ -5,8 +5,9 @@ ARG TARGETARCH
 WORKDIR /app
 
 COPY requirements.txt .
-# Base image pip 25.0.1 carries PYSEC-2026-196/1795/1796/2875/2876 (AUT-1019).
-RUN pip install --upgrade pip==26.1.2 \
+# Base image pip 25.0.1 carries PYSEC-2026-196/1795/1796/2875/2876 (AUT-1019);
+# pip >= 26.2 clears PYSEC-2026-3721 (AUT-1542).
+RUN pip install --upgrade pip==26.2 \
     && pip install --no-cache-dir -r requirements.txt \
     && python -m playwright install --with-deps chromium firefox \
     && apt-get update \
