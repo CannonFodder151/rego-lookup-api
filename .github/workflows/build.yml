@@ -25,7 +25,9 @@ concurrency:
 jobs:
   build:
     if: github.event_name != 'pull_request'
-    runs-on: [self-hosted, linux, x64]
+    # AUT-1661: Moved from self-hosted (offline) to GitHub-hosted.
+    # Docker buildx + QEMU handles multi-arch — no self-hosted needed.
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
