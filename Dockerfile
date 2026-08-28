@@ -2,6 +2,10 @@ FROM python:3.12-slim
 
 ARG TARGETARCH
 
+# AUT-1739: Playwright installs browsers into this path. It must live outside
+# root's home so the non-root runtime user can read the binaries at launch.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
 WORKDIR /app
 
 COPY requirements.txt .
@@ -26,7 +30,7 @@ RUN pip install --upgrade pip==26.2 \
 # sandbox helper must stay root-owned with the setuid bit so it can drop
 # privileges after launch; without it Chromium falls back to --no-sandbox.
 RUN useradd -m -u 1000 appuser \
-    && chown -R appuser:appuser /app \
+    && chown -R appuser:appuser /app /ms-playwright \
     && for sb in /opt/google/chrome/chrome-sandbox /usr/lib/chromium/chrome-sandbox; do \
          if [ -e "$sb" ]; then chown root:root "$sb" && chmod 4755 "$sb"; fi; \
        done

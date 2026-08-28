@@ -10,5 +10,7 @@ All notable changes to this project are documented in this file.
   Chromium SUID sandbox helper (`/opt/google/chrome/chrome-sandbox` or
   `/usr/lib/chromium/chrome-sandbox`) is kept root-owned + setuid (`4755`) so
   Chromium can sandbox untrusted third-party content as the non-root user.
-  `undetected.py` now launches Chromium sandboxed (no `--no-sandbox`) and only
-  falls back to `--no-sandbox` if the sandboxed launch actually fails.
+   `undetected.py` now launches Chromium sandboxed (no `--no-sandbox`) and only
+   falls back to `--no-sandbox` if the sandboxed launch actually fails. Playwright
+   browsers are now installed to `/ms-playwright` (outside root's home) so the
+   non-root user can read the Firefox/Chromium binaries at launch.
