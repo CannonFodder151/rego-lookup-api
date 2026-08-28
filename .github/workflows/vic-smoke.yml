@@ -1,10 +1,11 @@
+# AUT-1798: x64 jobs dispatch to the new vm2 runner (gh-runner-autobrain-rego-2). ARM stays on Oracle VM.
 name: VIC motorcycle smoke
 on:
   workflow_dispatch:
 
 jobs:
   vic-motorcycle:
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, linux, x64, vm2]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
