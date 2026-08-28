@@ -35,7 +35,11 @@ def _driver():
     import undetected_chromedriver as uc
     _ensure_display()
     opts = uc.ChromeOptions()
-    for arg in ("--no-sandbox", "--disable-dev-shm-usage", "--window-size=1280,900",
+    # AUT-1739: prefer Chromium's SUID sandbox. The container now runs as a
+    # non-root user; dropping --no-sandbox lets Chromium use the setuid helper.
+    # Some docker hosts can't initialise the SUID sandbox, so fall back to
+    # --no-sandbox only if the sandboxed launch actually fails.
+    for arg in ("--disable-dev-shm-usage", "--window-size=1280,900",
                 "--disable-blink-features=AutomationControlled",
                 "--disable-gpu", "--disable-software-rasterizer"):
         opts.add_argument(arg)
@@ -50,7 +54,13 @@ def _driver():
         # undetected-chromedriver <3.5.x cannot download an aarch64 chromedriver
         # (hardcodes linux64). Use the distro driver so VIC works on arm64 hosts.
         kwargs["driver_executable_path"] = cd
-    driver = uc.Chrome(**kwargs)
+    try:
+        driver = uc.Chrome(**kwargs)
+    except Exception as exc:
+        print(f"uc: sandboxed launch failed ({type(exc).__name__}); retrying with --no-sandbox",
+              file=sys.stderr, flush=True)
+        opts.add_argument("--no-sandbox")
+        driver = uc.Chrome(**kwargs)
     # A hung page/CDP call must never block the worker forever: script calls
     # (our poll reads the DOM via execute_script) and page loads get bounds.
     driver.set_page_load_timeout(30)
