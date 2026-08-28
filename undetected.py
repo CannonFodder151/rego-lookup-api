@@ -34,28 +34,44 @@ def _ensure_display():
 def _driver():
     import undetected_chromedriver as uc
     _ensure_display()
-    opts = uc.ChromeOptions()
-    for arg in ("--no-sandbox", "--disable-dev-shm-usage", "--window-size=1280,900",
-                "--disable-blink-features=AutomationControlled",
-                "--disable-gpu", "--disable-software-rasterizer"):
-        opts.add_argument(arg)
     binary = next((p for p in ("/usr/bin/google-chrome", "/usr/bin/chromium")
                    if os.path.exists(p)), None)
-    if binary:
-        opts.binary_location = binary
-    print(f"uc: launching {binary or 'auto-detected'} Chrome", file=sys.stderr, flush=True)
-    kwargs = {"options": opts, "headless": False}
     cd = shutil.which("chromedriver")
-    if cd:
-        # undetected-chromedriver <3.5.x cannot download an aarch64 chromedriver
-        # (hardcodes linux64). Use the distro driver so VIC works on arm64 hosts.
-        kwargs["driver_executable_path"] = cd
-    driver = uc.Chrome(**kwargs)
-    # A hung page/CDP call must never block the worker forever: script calls
-    # (our poll reads the DOM via execute_script) and page loads get bounds.
-    driver.set_page_load_timeout(30)
-    driver.set_script_timeout(15)
-    return driver
+    # SUID sandbox helper shipped beside the binary lets Chromium drop
+    # privileges after launch (CWE-250). Try the sandboxed launch first; only
+    # fall back to --no-sandbox if the host can't sandbox (AUT-1739).
+    for args in (["--disable-dev-shm-usage", "--window-size=1280,900",
+                  "--disable-blink-features=AutomationControlled",
+                  "--disable-gpu", "--disable-software-rasterizer"],
+                 ["--no-sandbox", "--disable-dev-shm-usage", "--window-size=1280,900",
+                  "--disable-blink-features=AutomationControlled",
+                  "--disable-gpu", "--disable-software-rasterizer"]):
+        opts = uc.ChromeOptions()
+        for arg in args:
+            opts.add_argument(arg)
+        if binary:
+            opts.binary_location = binary
+        kwargs = {"options": opts, "headless": False}
+        if cd:
+            # undetected-chromedriver <3.5.x cannot download an aarch64
+            # chromedriver (hardcodes linux64). Use the distro driver so VIC
+            # works on arm64 hosts.
+            kwargs["driver_executable_path"] = cd
+        try:
+            print(f"uc: launching {binary or 'auto-detected'} Chrome "
+                  f"(sandbox={'off' if '--no-sandbox' in args else 'on'})",
+                  file=sys.stderr, flush=True)
+            driver = uc.Chrome(**kwargs)
+            # A hung page/CDP call must never block the worker forever: script
+            # calls (our poll reads the DOM via execute_script) and page loads
+            # get bounds.
+            driver.set_page_load_timeout(30)
+            driver.set_script_timeout(15)
+            return driver
+        except Exception as e:
+            print(f"uc: launch with sandbox={'off' if '--no-sandbox' in args else 'on'} "
+                  f"failed: {e!r}", file=sys.stderr, flush=True)
+    raise RuntimeError("uc: all Chromium launch attempts failed")
 
 
 def _is_challenge(text):
