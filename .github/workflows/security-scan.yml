@@ -96,10 +96,11 @@ jobs:
             -d "{\"channel\":\"status\",\"title\":\"$TITLE\",\"description\":\"trivy scan of digest-pinned python:3.13-slim base image (rego-lookup-api).\",\"color\":\"$COLOR\",\"author\":\"Security Scan\",\"fields\":[{\"name\":\"Image\",\"value\":\"python:3.13-slim\",\"inline\":true},{\"name\":\"Run\",\"value\":\"$RUN_URL\",\"inline\":true}]}"
 
   audit:
-    # Full-resolution pip-audit of the *deployed* image. Only meaningful on
-    # main/schedule (the `:hosted` tag is published by auto-deploy), so it is
-    # intentionally skipped on pull_request where that image does not exist.
-    if: github.event_name != 'pull_request'
+    # Full-resolution pip-audit of the *deployed* image. Runs only on
+    # schedule/workflow_dispatch (the `:hosted` tag is published by auto-deploy,
+    # so a `push` run would race the deployment and pull a stale/absent image).
+    # Skipped on pull_request where `:hosted` does not exist.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, linux, x64]
     steps:
       - name: Fail on known vulns in the deployed image
