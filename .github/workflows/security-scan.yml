@@ -1,11 +1,11 @@
 # AUT-1735: scan the pinned python base image for HIGH/CRITICAL CVEs and
 # enforce digest pinning (no floating tags).
 #
-# Note: AUT-1781 and related fixes (vm2 runner instability) led to using
-# GitHub-hosted runners for reliable action fetching. The `x64` self-hosted
-# label maps to broken vm2 runners; ubuntu-latest has full internet access.
-# The pin-guard and trivy scan steps run on GitHub-hosted; the `audit` job
-# (detecting unfixed vulns in the DEPLOYED image) stays on self-hosted.
+# Rego's self-hosted runners cannot fetch GitHub-hosted actions
+# (actions/checkout, aquasecurity/trivy-action) and GitHub-hosted minutes are
+# billing-blocked, so the scan runs trivy directly via `docker run` (the runner
+# has Docker + Docker Hub access, proven by the build workflow). The trivy
+# vulnerability DB is fetched from ghcr.io at scan time.
 
 name: Security — base image CVE scan (trivy)
 
@@ -37,16 +37,14 @@ env:
 
 jobs:
   image-scan:
-    # GitHub-hosted runner to ensure actions can be downloaded (self-hosted
-    # runners had network issues fetching actions/checkout and trivy-action).
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     steps:
-      - uses: actions/checkout@v4
-
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
         run: |
           set -euo pipefail
-          FLOATING="$(grep -nE 'FROM python:[0-9]' Dockerfile || true)"
+          # Fetch the in-repo Dockerfile (no checkout action on rego runners).
+          DOCKERFILE="$(curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/Dockerfile" || true)"
+          FLOATING="$(printf '%s\n' "$DOCKERFILE" | grep -nE 'FROM python:[0-9]' || true)"
           FLOATING="$(printf '%s\n' "$FLOATING" | grep -v '@sha256' || true)"
           if [ -n "$FLOATING" ]; then
             echo "::error::floating python base image detected (missing @sha256 digest):"
@@ -56,35 +54,28 @@ jobs:
           echo "OK: python base image is digest-pinned in Dockerfile."
 
       - name: Scan pinned python base image (HIGH/CRITICAL, AUT-1735)
-        uses: aquasecurity/trivy-action@0.36.0
-        with:
-          image-ref: ${{ env.PYTHON_BASE_IMAGE }}
-          scanner: vuln
-          severity: 'HIGH,CRITICAL'
-          ignore-unfixed: true
-          format: 'table'
-          output: 'trivy-python-report.txt'
-          exit-code: '1'
-
-      - name: Upload scan report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-python-report
-          path: |
-            trivy-python-report.txt
+        run: |
+          set -euo pipefail
+          docker pull aquasec/trivy:latest
+          docker run --rm aquasec/trivy:latest image \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --exit-code 1 \
+            "$PYTHON_BASE_IMAGE" | tee trivy-python-report.txt
 
       - name: Report to Discord #status
         if: always()
         env:
-          COLOR: ${{ job.status == 'success' && '0x57F287' || '0xED4245' }}
-          TITLE: ${{ job.status == 'success' && 'Base image scan clean' || 'Base image scan found HIGH/CRITICAL CVEs' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            COLOR=0x57F287; TITLE="Base image scan clean"
+          else
+            COLOR=0xED4245; TITLE="Base image scan found HIGH/CRITICAL CVEs"
+          fi
           curl -s -X POST https://n8n.nathanmartina.com/webhook/discord-report \
             -H "Content-Type: application/json" \
-            -d "$(jq -nc --arg c status --arg t "$TITLE" --arg col "$COLOR" --arg u "$RUN_URL" \
-              '{channel:$c,title:$t,description:"trivy scan of digest-pinned python:3.13-slim base image (rego-lookup-api).",color:$col,author:"Security Scan",fields:[{name:"Image",value:"python:3.13-slim",inline:true},{name:"Run",value:$u,inline:true}]}')"
+            -d "{\"channel\":\"status\",\"title\":\"$TITLE\",\"description\":\"trivy scan of digest-pinned python:3.13-slim base image (rego-lookup-api).\",\"color\":\"$COLOR\",\"author\":\"Security Scan\",\"fields\":[{\"name\":\"Image\",\"value\":\"python:3.13-slim\",\"inline\":true},{\"name\":\"Run\",\"value\":\"$RUN_URL\",\"inline\":true}]}"
 
   audit:
     # Full-resolution pip-audit of the *deployed* image. Only meaningful on
