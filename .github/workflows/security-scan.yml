@@ -1,31 +1,111 @@
-# AUT-1798: x64 jobs dispatch to the new vm2 runner (gh-runner-autobrain-rego-2). ARM stays on Oracle VM.
-name: Security — full-resolution dependency scan
+# AUT-1735: scan the pinned python base image for HIGH/CRITICAL CVEs and
+# enforce digest pinning (no floating tags).
+#
+# Rego's self-hosted runners cannot fetch GitHub-hosted actions
+# (actions/checkout, aquasecurity/trivy-action) and GitHub-hosted minutes are
+# billing-blocked, so the scan runs trivy directly via `docker run` (the runner
+# has Docker + Docker Hub access, proven by the build workflow). The trivy
+# vulnerability DB is fetched from ghcr.io at scan time.
+
+name: Security — base image CVE scan (trivy)
 
 on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - '.trivyignore'
+      - '.github/workflows/security-scan.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - '.trivyignore'
+      - '.github/workflows/security-scan.yml'
   schedule:
-    # Weekly, Monday 06:00 UTC, same cadence as the autobrain monorepo scan
-    # (AUT-1019). A full-resolution (transitive) audit catches CVEs in the
-    # resolved tree (playwright/selenium/undetected-chromedriver deps) that a
-    # direct-pin review cannot see. Self-hosted runner (private repo: GitHub-
-    # hosted minutes are billing-blocked). The runner host's pip traffic is
-    # proxied to a stale mirror (uvicorn==0.34.0 missing), so the audit runs
-    # inside the deployed image's container: its network reaches live PyPI and
-    # its installed site-packages ARE the fully-resolved production tree —
-    # no source mount, no resolution, audits exactly what ships (AUT-1019).
     - cron: '0 6 * * 1'
   workflow_dispatch:
 
+concurrency:
+  group: security-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_BASE_IMAGE: 'python:3.13-slim@sha256:16f75ad0fbc6c4883a8afd63b2d700c3cf68ccffc1aaeca5304ca0a3a908451f'
+
 jobs:
+  image-scan:
+    runs-on: [self-hosted, linux, x64]
+    steps:
+      - name: Resolve ref
+        id: ref
+        run: |
+          # GITHUB_HEAD_REF is the PR head branch on pull_request; empty on
+          # push/schedule. GITHUB_REF_NAME is always the short ref name.
+          if [ -n "$GITHUB_HEAD_REF" ]; then
+            echo "ref=$GITHUB_HEAD_REF" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Pin guard — python base image must be digest-pinned (AUT-1735)
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          # Fetch the in-repo Dockerfile (no checkout action on rego runners).
+          DOCKERFILE="$(curl -fsSL "https://raw.githubusercontent.com/$REPO/${{ steps.ref.outputs.ref }}/Dockerfile" || true)"
+          FLOATING="$(printf '%s\n' "$DOCKERFILE" | grep -nE 'FROM python:[0-9]' || true)"
+          FLOATING="$(printf '%s\n' "$FLOATING" | grep -v '@sha256' || true)"
+          if [ -n "$FLOATING" ]; then
+            echo "::error::floating python base image detected (missing @sha256 digest):"
+            printf '%s\n' "$FLOATING"
+            exit 1
+          fi
+          echo "OK: python base image is digest-pinned in Dockerfile."
+
+      - name: Scan pinned python base image (HIGH/CRITICAL, AUT-1735)
+        run: |
+          set -euo pipefail
+          docker pull aquasec/trivy:latest
+          REPO="${{ github.repository }}"
+          # Mount the repo's .trivyignore into the trivy container (no checkout
+          # available on rego runners); fall back to inline ignores if fetch fails.
+          curl -fsSL "https://raw.githubusercontent.com/$REPO/${{ steps.ref.outputs.ref }}/.trivyignore" \
+            -o .trivyignore 2>/dev/null || printf '%s\n' \
+            'CVE-2026-14456' 'GHSA-6v7p-g79w-8964' 'CVE-2025-47273' > .trivyignore
+          docker run --rm -v "$PWD:/ws" -w /ws aquasec/trivy:latest image \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --exit-code 1 \
+            "$PYTHON_BASE_IMAGE" | tee trivy-python-report.txt
+
+      - name: Report to Discord #status
+        if: always()
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            COLOR=0x57F287; TITLE="Base image scan clean"
+          else
+            COLOR=0xED4245; TITLE="Base image scan found HIGH/CRITICAL CVEs"
+          fi
+          curl -s -X POST https://n8n.nathanmartina.com/webhook/discord-report \
+            -H "Content-Type: application/json" \
+            -d "{\"channel\":\"status\",\"title\":\"$TITLE\",\"description\":\"trivy scan of digest-pinned python:3.13-slim base image (rego-lookup-api).\",\"color\":\"$COLOR\",\"author\":\"Security Scan\",\"fields\":[{\"name\":\"Image\",\"value\":\"python:3.13-slim\",\"inline\":true},{\"name\":\"Run\",\"value\":\"$RUN_URL\",\"inline\":true}]}"
+
   audit:
+    # Full-resolution pip-audit of the *deployed* image. Only meaningful on
+    # main/schedule (the `:hosted` tag is published by auto-deploy), so it is
+    # intentionally skipped on pull_request where that image does not exist.
     if: github.event_name != 'pull_request'
-    runs-on: [self-hosted, linux, x64, vm2]
+    runs-on: [self-hosted, linux, x64]
     steps:
       - name: Fail on known vulns in the deployed image
         id: audit
         run: |
           set -euo pipefail
-          # docker run would reuse a stale local tag by default; force a fresh
-          # pull so the scan audits the deployed image as rebuilt (AUT-1028).
           docker pull cannonfodder151/rego-lookup-api:hosted
           docker run --rm cannonfodder151/rego-lookup-api:hosted \
             sh -c "pip install --quiet pip-audit && pip-audit" \

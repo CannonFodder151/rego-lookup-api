@@ -1,4 +1,5 @@
-FROM python:3.12-slim
+# AUT-1735: bump off vulnerable python:3.12-slim; pin base by digest.
+FROM python:3.13-slim@sha256:16f75ad0fbc6c4883a8afd63b2d700c3cf68ccffc1aaeca5304ca0a3a908451f
 
 ARG TARGETARCH
 

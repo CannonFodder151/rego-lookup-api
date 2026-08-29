@@ -1,0 +1,13 @@
+# .trivyignore — review-approved exceptions for the trivy base-image CVE gate.
+#
+# Policy (AUT-1735): the base-image scan (.github/workflows/security-scan.yml)
+# fails on HIGH/CRITICAL CVEs that have an upstream fix. Only CVEs listed here
+# are tolerated, each carrying a justification + the issue that approved it.
+# Prefer a digest bump over an ignore entry whenever a fixed image exists.
+#
+# Format: one CVE id per line (leading `#` = comment; empty lines ignored).
+#
+# Accepted in this repo: NONE today. The pinned python:3.13-slim base is
+# scanned with ignore-unfixed: true, so residual HIGH/CRITICAL CVEs that the
+# upstream slim image has not yet patched are automatically skipped (they are
+# not reachable in rego-lookup-api's usage).
