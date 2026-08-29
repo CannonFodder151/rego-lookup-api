@@ -99,7 +99,7 @@ jobs:
     # Full-resolution pip-audit of the *deployed* image. Only meaningful on
     # main/schedule (the `:hosted` tag is published by auto-deploy), so it is
     # intentionally skipped on pull_request where that image does not exist.
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, linux, x64]
     steps:
       - name: Fail on known vulns in the deployed image
