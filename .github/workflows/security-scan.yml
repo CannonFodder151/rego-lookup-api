@@ -1,11 +1,17 @@
 # AUT-1735: scan the pinned python base image for HIGH/CRITICAL CVEs and
 # enforce digest pinning (no floating tags).
 #
-# Rego's self-hosted runners cannot fetch GitHub-hosted actions
-# (actions/checkout, aquasecurity/trivy-action) and GitHub-hosted minutes are
-# billing-blocked, so the scan runs trivy directly via `docker run` (the runner
-# has Docker + Docker Hub access, proven by the build workflow). The trivy
-# vulnerability DB is fetched from ghcr.io at scan time.
+# The scan invokes trivy directly via `docker run` with a digest-pinned image
+# (not the GitHub trivy-action) for two reasons:
+#   1. Determinism — the trivy tool image is pinned by digest, just like the
+#      python base image it scans (AUT-1735 policy).
+#   2. Currency — a pinned, recent trivy DB surfaces 2026 CVEs (e.g.
+#      CVE-2026-14456) that an older action-bundled trivy would miss (a false
+#      PASS). Flagged-but-unreachable CVEs are accepted explicitly in .trivyignore
+#      with per-CVE justifications.
+# The runner has Docker + Docker Hub access (proven by the build workflow); the
+# repo is private, so raw.githubusercontent.com fetches authenticate with the
+# auto-injected GITHUB_TOKEN.
 
 name: Security — base image CVE scan (trivy)
 
@@ -54,8 +60,10 @@ jobs:
         run: |
           set -euo pipefail
           REPO="${{ github.repository }}"
-          # Fetch the in-repo Dockerfile (no checkout action on rego runners).
-          DOCKERFILE="$(curl -fsSL "https://raw.githubusercontent.com/$REPO/${{ steps.ref.outputs.ref }}/Dockerfile" || true)"
+          # Fetch the in-repo Dockerfile (private repo → authenticate with GITHUB_TOKEN).
+          DOCKERFILE="$(curl -fsSL -H "Authorization: token $GITHUB_TOKEN" \
+            "https://raw.githubusercontent.com/$REPO/${{ steps.ref.outputs.ref }}/Dockerfile")" || {
+            echo "::error::could not fetch Dockerfile from raw.githubusercontent.com — aborting pin guard."; exit 1; }
           FLOATING="$(printf '%s\n' "$DOCKERFILE" | grep -nE 'FROM python:[0-9]' || true)"
           FLOATING="$(printf '%s\n' "$FLOATING" | grep -v '@sha256' || true)"
           if [ -n "$FLOATING" ]; then
@@ -72,7 +80,7 @@ jobs:
           REPO="${{ github.repository }}"
           # Mount the repo's .trivyignore into the trivy container (no checkout
           # available on rego runners); fall back to inline ignores if fetch fails.
-          curl -fsSL "https://raw.githubusercontent.com/$REPO/${{ steps.ref.outputs.ref }}/.trivyignore" \
+          curl -fsSL -H "Authorization: token $GITHUB_TOKEN" "https://raw.githubusercontent.com/$REPO/${{ steps.ref.outputs.ref }}/.trivyignore" \
             -o .trivyignore 2>/dev/null || printf '%s\n' \
             'CVE-2026-14456' 'GHSA-6v7p-g79w-8964' 'CVE-2025-47273' > .trivyignore
           docker run --rm -v "$PWD:/ws" -w /ws aquasec/trivy@sha256:ee940acbf1f58ebadb42d01434ce4609530bf1b52536afbd1eee66cd7123c5c9 image \

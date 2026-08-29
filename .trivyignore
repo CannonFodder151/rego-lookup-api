@@ -5,9 +5,17 @@
 # are tolerated, each carrying a justification + the issue that approved it.
 # Prefer a digest bump over an ignore entry whenever a fixed image exists.
 #
-# Format: one CVE id per line (leading `#` = comment; empty lines ignored).
+# Format: one CVE/GHSA id per line (leading `#` = comment; empty lines ignored).
 #
-# Accepted in this repo: NONE today. The pinned python:3.13-slim base is
-# scanned with ignore-unfixed: true, so residual HIGH/CRITICAL CVEs that the
-# upstream slim image has not yet patched are automatically skipped (they are
-# not reachable in rego-lookup-api's usage).
+# The pinned `python:3.13-slim` base is scanned with `ignore-unfixed: true`, so
+# unfixed CVEs are auto-skipped. The entries below are CVEs that DO have an
+# upstream fix but the current slim digest still carries; they are unreachable
+# in rego-lookup-api's HTTP/uvicorn runtime, so they are accepted (AUT-1735).
+# This mirrors the exception class accepted in the autobrain monorepo.
+
+# --- AUT-1735: residual HIGH CVEs in the python:3.13-slim base image ----------
+# Reachable? No — rego-lookup-api (uvicorn HTTP/1.1) does not use QUIC, msgpack
+# or setuptools package-index resolution at runtime.
+CVE-2026-14456  # openssl: unbounded memory growth in a QUIC server; rego serves HTTP via uvicorn, no QUIC/HTTP3 role
+GHSA-6v7p-g79w-8964  # msgpack OOB read on Unpacker reuse; rego does not import msgpack (base-image transitive pkg, unused)
+CVE-2025-47273  # setuptools path traversal in PackageIndex; build-time tool, no easy_install/PackageIndex resolution at runtime
