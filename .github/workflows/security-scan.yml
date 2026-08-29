@@ -43,7 +43,7 @@ jobs:
         run: |
           set -euo pipefail
           # Fetch the in-repo Dockerfile (no checkout action on rego runners).
-          DOCKERFILE="$(curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/Dockerfile" || true)"
+          DOCKERFILE="$(curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/Dockerfile" || true)"
           FLOATING="$(printf '%s\n' "$DOCKERFILE" | grep -nE 'FROM python:[0-9]' || true)"
           FLOATING="$(printf '%s\n' "$FLOATING" | grep -v '@sha256' || true)"
           if [ -n "$FLOATING" ]; then
