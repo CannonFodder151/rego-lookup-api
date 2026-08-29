@@ -1,8 +1,11 @@
 # AUT-1735: scan the pinned python base image for HIGH/CRITICAL CVEs and
-# enforce digest pinning (no floating tags). Mirrors the autobrain monorepo
-# trivy gate (docker/backend/ai/worker/market-data). The `x64` self-hosted
-# runner label is used deliberately — the `vm2` label left jobs unclaimed
-# (same "Set up job" degradation seen on the autobrain trivy gate, AUT-1781).
+# enforce digest pinning (no floating tags).
+#
+# Note: AUT-1781 and related fixes (vm2 runner instability) led to using
+# GitHub-hosted runners for reliable action fetching. The `x64` self-hosted
+# label maps to broken vm2 runners; ubuntu-latest has full internet access.
+# The pin-guard and trivy scan steps run on GitHub-hosted; the `audit` job
+# (detecting unfixed vulns in the DEPLOYED image) stays on self-hosted.
 
 name: Security — base image CVE scan (trivy)
 
@@ -19,7 +22,6 @@ on:
       - '.trivyignore'
       - '.github/workflows/security-scan.yml'
   schedule:
-    # Weekly, Monday 06:00 UTC — same cadence as the autobrain scan (AUT-1019).
     - cron: '0 6 * * 1'
   workflow_dispatch:
 
@@ -31,15 +33,13 @@ permissions:
   contents: read
 
 env:
-  # python:3.13-slim digest fetched from Docker Hub (manifest-list, resolves
-  # per-arch). Shared with the autobrain monorepo (AUT-1735) — see
-  # .github/workflows/trivy-image-scan.yml there for the validated value.
   PYTHON_BASE_IMAGE: 'python:3.13-slim@sha256:7ce4b6dfe35e55397b7cda544f8a13f191b7ae28dc5aad71fe664dbc9bc2623f'
 
 jobs:
   image-scan:
-    # Runs on PRs and pushes so a floating/vulnerable base image blocks merge.
-    runs-on: [self-hosted, linux, x64]
+    # GitHub-hosted runner to ensure actions can be downloaded (self-hosted
+    # runners had network issues fetching actions/checkout and trivy-action).
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
