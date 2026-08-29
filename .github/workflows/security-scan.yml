@@ -9,9 +9,8 @@
 #      CVE-2026-14456) that an older action-bundled trivy would miss (a false
 #      PASS). Flagged-but-unreachable CVEs are accepted explicitly in .trivyignore
 #      with per-CVE justifications.
-# The runner has Docker + Docker Hub access (proven by the build workflow); the
-# repo is private, so raw.githubusercontent.com fetches authenticate with the
-# auto-injected GITHUB_TOKEN.
+# The repo files (Dockerfile, .trivyignore) come from actions/checkout (works on
+# the rego self-hosted runner, see build.yml).
 
 name: Security — base image CVE scan (trivy)
 
@@ -45,26 +44,12 @@ jobs:
   image-scan:
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Resolve ref
-        id: ref
-        run: |
-          # GITHUB_HEAD_REF is the PR head branch on pull_request; empty on
-          # push/schedule. GITHUB_REF_NAME is always the short ref name.
-          if [ -n "$GITHUB_HEAD_REF" ]; then
-            echo "ref=$GITHUB_HEAD_REF" >> "$GITHUB_OUTPUT"
-          else
-            echo "ref=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
-          fi
+      - uses: actions/checkout@v4
 
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
         run: |
           set -euo pipefail
-          REPO="${{ github.repository }}"
-          # Fetch the in-repo Dockerfile (private repo → authenticate with GITHUB_TOKEN).
-          DOCKERFILE="$(curl -fsSL -H "Authorization: token $GITHUB_TOKEN" \
-            "https://raw.githubusercontent.com/$REPO/${{ steps.ref.outputs.ref }}/Dockerfile")" || {
-            echo "::error::could not fetch Dockerfile from raw.githubusercontent.com — aborting pin guard."; exit 1; }
-          FLOATING="$(printf '%s\n' "$DOCKERFILE" | grep -nE 'FROM python:[0-9]' || true)"
+          FLOATING="$(grep -nE 'FROM python:[0-9]' Dockerfile || true)"
           FLOATING="$(printf '%s\n' "$FLOATING" | grep -v '@sha256' || true)"
           if [ -n "$FLOATING" ]; then
             echo "::error::floating python base image detected (missing @sha256 digest):"
@@ -77,13 +62,10 @@ jobs:
         run: |
           set -euo pipefail
           docker pull aquasec/trivy@sha256:ee940acbf1f58ebadb42d01434ce4609530bf1b52536afbd1eee66cd7123c5c9
-          REPO="${{ github.repository }}"
-          # Mount the repo's .trivyignore into the trivy container (no checkout
-          # available on rego runners); fall back to inline ignores if fetch fails.
-          curl -fsSL -H "Authorization: token $GITHUB_TOKEN" "https://raw.githubusercontent.com/$REPO/${{ steps.ref.outputs.ref }}/.trivyignore" \
-            -o .trivyignore 2>/dev/null || printf '%s\n' \
-            'CVE-2026-14456' 'GHSA-6v7p-g79w-8964' 'CVE-2025-47273' > .trivyignore
-          docker run --rm -v "$PWD:/ws" -w /ws aquasec/trivy@sha256:ee940acbf1f58ebadb42d01434ce4609530bf1b52536afbd1eee66cd7123c5c9 image \
+          # .trivyignore is checked out into the workspace; mount it so trivy
+          # reads the reviewed residual-CVE accepts (no inline fallback needed).
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            aquasec/trivy@sha256:ee940acbf1f58ebadb42d01434ce4609530bf1b52536afbd1eee66cd7123c5c9 image \
             --severity HIGH,CRITICAL \
             --ignore-unfixed \
             --exit-code 1 \
@@ -104,9 +86,9 @@ jobs:
             -d "{\"channel\":\"status\",\"title\":\"$TITLE\",\"description\":\"trivy scan of digest-pinned python:3.13-slim base image (rego-lookup-api).\",\"color\":\"$COLOR\",\"author\":\"Security Scan\",\"fields\":[{\"name\":\"Image\",\"value\":\"python:3.13-slim\",\"inline\":true},{\"name\":\"Run\",\"value\":\"$RUN_URL\",\"inline\":true}]}"
 
   audit:
-    # Full-resolution pip-audit of the *deployed* image. Only meaningful on
-    # main/schedule (the `:hosted` tag is published by auto-deploy), so it is
-    # intentionally skipped on pull_request where that image does not exist.
+    # Full-resolution pip-audit of the *deployed* image. Runs only on
+    # schedule/workflow_dispatch (the `:hosted` tag is published by auto-deploy),
+    # so it never races a `push` build and is skipped on pull_request.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, linux, x64]
     steps:
