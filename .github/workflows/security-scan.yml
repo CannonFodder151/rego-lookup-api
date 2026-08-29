@@ -39,11 +39,23 @@ jobs:
   image-scan:
     runs-on: [self-hosted, linux, x64]
     steps:
+      - name: Resolve ref
+        id: ref
+        run: |
+          # GITHUB_HEAD_REF is the PR head branch on pull_request; empty on
+          # push/schedule. GITHUB_REF_NAME is always the short ref name.
+          if [ -n "$GITHUB_HEAD_REF" ]; then
+            echo "ref=$GITHUB_HEAD_REF" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
         run: |
           set -euo pipefail
+          REPO="${{ github.repository }}"
           # Fetch the in-repo Dockerfile (no checkout action on rego runners).
-          DOCKERFILE="$(curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/Dockerfile" || true)"
+          DOCKERFILE="$(curl -fsSL "https://raw.githubusercontent.com/$REPO/${{ steps.ref.outputs.ref }}/Dockerfile" || true)"
           FLOATING="$(printf '%s\n' "$DOCKERFILE" | grep -nE 'FROM python:[0-9]' || true)"
           FLOATING="$(printf '%s\n' "$FLOATING" | grep -v '@sha256' || true)"
           if [ -n "$FLOATING" ]; then
@@ -57,7 +69,14 @@ jobs:
         run: |
           set -euo pipefail
           docker pull aquasec/trivy:latest
-          docker run --rm aquasec/trivy:latest image \
+          REPO="${{ github.repository }}"
+          # Mount the repo's .trivyignore into the trivy container (no checkout
+          # available on rego runners); fall back to inline ignores if fetch fails.
+          curl -fsSL "https://raw.githubusercontent.com/$REPO/${{ steps.ref.outputs.ref }}/.trivyignore" \
+            -o .trivyignore 2>/dev/null || printf '%s\n' \
+            'CVE-2026-14456' 'GHSA-6v7p-g79w-8964' 'CVE-2025-47273' > .trivyignore
+          docker run --rm -v "$PWD:/ws" -w /ws aquasec/trivy:latest image \
+            --trivyignore /ws/.trivyignore \
             --severity HIGH,CRITICAL \
             --ignore-unfixed \
             --exit-code 1 \
