@@ -1,5 +1,11 @@
 # AUT-1735: bump off vulnerable python:3.12-slim; pin base by digest.
-FROM python:3.13-slim@sha256:16f75ad0fbc6c4883a8afd63b2d700c3cf68ccffc1aaeca5304ca0a3a908451f
+# AUT-1877: pin the MULTI-ARCH INDEX digest, not a per-arch image digest.
+# 16f75ad0... is the amd64 per-platform image digest; building it into an arm64
+# target makes buildx pull only amd64 layers (qemu-emulated) so the "arm64"
+# image ships amd64 binaries and crashes `exec /app/start.sh: exec format error`
+# on the Oracle ARM64 host. The index digest resolves the correct per-arch base
+# for each --platform in the buildx bake.
+FROM python:3.13-slim@sha256:7ce4b6dfe35e55397b7cda544f8a13f191b7ae28dc5aad71fe664dbc9bc2623f
 
 ARG TARGETARCH
 
