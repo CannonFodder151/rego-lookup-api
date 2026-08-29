@@ -76,7 +76,6 @@ jobs:
             -o .trivyignore 2>/dev/null || printf '%s\n' \
             'CVE-2026-14456' 'GHSA-6v7p-g79w-8964' 'CVE-2025-47273' > .trivyignore
           docker run --rm -v "$PWD:/ws" -w /ws aquasec/trivy:latest image \
-            --trivyignore /ws/.trivyignore \
             --severity HIGH,CRITICAL \
             --ignore-unfixed \
             --exit-code 1 \
