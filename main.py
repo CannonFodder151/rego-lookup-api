@@ -70,14 +70,13 @@ limiter = Limiter(key_func=_api_key, headers_enabled=True)
 # unauthenticated attacker cannot enumerate the API surface (CWE-200).
 _is_prod = os.getenv("ENVIRONMENT", "production") == "production"
 _docs_url = None if _is_prod else "/docs"
-_redoc_url = None if _is_prod else "/redoc"
 _openapi_url = None if _is_prod else "/openapi.json"
 
 app = FastAPI(
     title="Rego Lookup API",
     version=APP_VERSION,
     docs_url=_docs_url,
-    redoc_url=_redoc_url,
+    redoc_url=None,
     openapi_url=_openapi_url,
 )
 app.state.limiter = limiter
