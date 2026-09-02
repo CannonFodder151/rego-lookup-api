@@ -66,7 +66,11 @@ def _api_key(request: Request) -> str:
 
 limiter = Limiter(key_func=_api_key, headers_enabled=True)
 
-app = FastAPI(title="Rego Lookup API", version=APP_VERSION)
+docs_url_open = "/docs" if os.getenv("ENVIRONMENT", "production") != "production" else None
+redoc_url_open = None if os.getenv("ENVIRONMENT", "production") != "production" else None
+openapi_url_open = None if os.getenv("ENVIRONMENT", "production") == "production" else "/openapi.json"
+
+app = FastAPI(title="Rego Lookup API", version=APP_VERSION, docs_url=docs_url_open, redoc_url=redoc_url_open, openapi_url=openapi_url_open)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
