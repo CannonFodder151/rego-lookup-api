@@ -4,7 +4,7 @@ import os
 import re
 from typing import Literal
 
-from fastapi import FastAPI, Header, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -13,7 +13,7 @@ from slowapi.util import get_remote_address
 
 from providers import UpstreamBlocked, UpstreamError, NotFound, STATES, lookup
 
-APP_VERSION = "1.2.2"
+APP_VERSION = "1.2.3"
 
 API_KEY = os.getenv("API_KEY", "")
 
@@ -108,6 +108,21 @@ def health():
     return {"status": "ok", "version": APP_VERSION}
 
 
+# AUT-2145: API-key check runs as a FastAPI dependency before Pydantic body
+# parsing so unauthenticated requests cannot fingerprint the request schema.
+def require_api_key(
+    request: Request,
+    x_api_key: str | None = Header(None),
+    authorization: str | None = Header(None),
+) -> str:
+    key = x_api_key
+    if authorization and authorization.lower().startswith("bearer "):
+        key = authorization[7:]
+    if not API_KEY or not hmac.compare_digest(key or "", API_KEY):
+        raise HTTPException(status_code=401, detail="invalid API key")
+    return key or ""
+
+
 @app.post("/lookup", response_model=LookupResponse)
 @limiter.limit(RATE_LIMIT_IP, key_func=_client_ip)
 @limiter.limit(RATE_LIMIT_KEY, key_func=_api_key)
@@ -115,14 +130,8 @@ async def rego_lookup(
     request: Request,
     response: Response,
     req: LookupRequest,
-    x_api_key: str | None = Header(None),
-    authorization: str | None = Header(None),
+    _api_key: str = Depends(require_api_key),
 ):
-    key = x_api_key
-    if authorization and authorization.lower().startswith("bearer "):
-        key = authorization[7:]
-    if not API_KEY or not hmac.compare_digest(key or "", API_KEY):
-        raise HTTPException(status_code=401, detail="invalid API key")
 
     state = req.state.strip().upper()
     if state not in STATES:

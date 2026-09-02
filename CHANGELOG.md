@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Security
+- **(AUT-2145):** The X-API-Key check now runs as a FastAPI dependency
+  (`require_api_key`) that resolves before Pydantic body parsing. Unauthenticated
+  `POST /lookup` requests — including empty/invalid bodies — now return
+  `401 invalid API key` instead of `422 Unprocessable Entity`, so the required
+  field names (`plate`, `state`) are no longer disclosed to unauthenticated
+  callers. The bearer-token header is still honoured. Added
+  `test_rego_auth_before_validation.py` to lock the new behaviour.
 - **(AUT-1739, CWE-250):** The image no longer runs as root. Creates a non-root
   `appuser` (uid 1000), chowns `/app` to it, and sets `USER appuser`. The
   Chromium SUID sandbox helper (`/opt/google/chrome/chrome-sandbox` or
