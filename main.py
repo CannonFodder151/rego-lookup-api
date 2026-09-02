@@ -66,7 +66,20 @@ def _api_key(request: Request) -> str:
 
 limiter = Limiter(key_func=_api_key, headers_enabled=True)
 
-app = FastAPI(title="Rego Lookup API", version=APP_VERSION)
+# AUT-1745: disable the OpenAPI / Swagger / ReDoc endpoints in production so an
+# unauthenticated attacker cannot enumerate the API surface (CWE-200).
+_is_prod = os.getenv("ENVIRONMENT", "production") == "production"
+_docs_url = None if _is_prod else "/docs"
+_redoc_url = None if _is_prod else "/redoc"
+_openapi_url = None if _is_prod else "/openapi.json"
+
+app = FastAPI(
+    title="Rego Lookup API",
+    version=APP_VERSION,
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
+    openapi_url=_openapi_url,
+)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
