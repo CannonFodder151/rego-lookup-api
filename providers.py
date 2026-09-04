@@ -28,6 +28,8 @@ _FIELDS = {
     "year": r"\b(?:Year\s*(?:of|by)?\s*(?:manufacture|built|first|model)?|Date of manufacture)\b[:\s]*([0-9]{4})",
     "colour": r"\bColou?r\b[:\s]*([A-Za-z][A-Za-z \-]*?)(?=\s+(?:CTP|Insurer|Model|Make|Body|Year|VIN|Vin|Status|Expiry|Odometer|Compliance)\b|\s*$)",
     "body_type": r"\bBody\s*(?:type|shape)?\b(?!type\b|shape\b)[:\s]*([A-Za-z][A-Za-z0-9 .\-/]*?)(?=\s+(?:State|Status|Model|Make|Year|Colour|Color|VIN|Vin|Expiry)\b|\s*$)",
+    "rego_status": r"\bRegistration\s+status\b[:\s]*([A-Za-z][A-Za-z \-/]*?)(?=\s+(?:Registration\s+expiry|Expiry\s+date|Expiry|Status|VIN|Make|Model)\b|\s*$)",
+    "rego_expiry_date": r"\bRegistration\s+expiry(?:\s+date)?\b[:\s]*([0-9A-Za-z][0-9/\- A-Za-z]{4,30}?)(?=\s+(?:Registration\s+status|Status|Make|Model|VIN|Colour)\b|\s*$)",
 }
 
 
@@ -61,6 +63,9 @@ _LABELS = {
              "model year", "first registered", "year first registered"),
     "colour": ("colour", "color", "vehicle colour", "vehicle color"),
     "body_type": ("body type", "body shape", "body", "body style"),
+    "rego_status": ("registration status", "rego status", "status"),
+    "rego_expiry_date": ("registration expiry date", "registration expiry", "rego expiry date",
+                         "rego expiry", "expiry date", "expiry"),
 }
 
 _BODY_WORDS = {"wagon", "sedan", "hatchback", "hatch", "coupe", "ute", "utility", "truck",
@@ -312,6 +317,60 @@ def _split_make_model(val):
             return " ".join(tokens[:i]), " ".join(tokens[i:]) or None
     return " ".join(tokens[:-1]), tokens[-1]
 
+_VALID_STATUS_WORDS = ("current", "currently", "registered", "active", "valid", "unexpired")
+_EXPIRED_STATUS_WORDS = ("expired", "lapsed", "cancelled", "suspended", "transferred",
+                         "written off", "written-off", "not currently registered",
+                         "unregistered", "not registered", "no longer registered",
+                         "deregistered", "de-registered", "not active", "inactive")
+
+def _normalise_status(raw):
+    if not raw:
+        return None
+    s = re.sub(r"\s+", " ", raw).strip().lower()
+    if not s:
+        return None
+    for w in _EXPIRED_STATUS_WORDS:
+        if w in s:
+            return "expired"
+    for w in _VALID_STATUS_WORDS:
+        if w in s:
+            return "valid"
+    return "unknown"
+
+_MONTHS = {m.lower(): i + 1 for i, m in enumerate(
+    ["January", "February", "March", "April", "May", "June",
+     "July", "August", "September", "October", "November", "December"])}
+_MONTHS.update({m.lower()[:3]: i + 1 for i, m in enumerate(
+    ["January", "February", "March", "April", "May", "June",
+     "July", "August", "September", "October", "November", "December"])})
+
+def _parse_expiry(raw):
+    if not raw:
+        return None
+    s = re.sub(r"\s+", " ", raw).strip()
+    s = re.sub(r"(\d+)(st|nd|rd|th)\b", r"\1", s, flags=re.I)
+    m = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{2,4})", s)
+    if m:
+        d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if y < 100:
+            y += 2000
+        try:
+            return f"{y:04d}-{mo:02d}-{d:02d}"
+        except ValueError:
+            return None
+    m = re.fullmatch(r"(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})", s)
+    if m:
+        d, mo, y = int(m.group(1)), _MONTHS.get(m.group(2).lower()), int(m.group(3))
+        if mo:
+            try:
+                return f"{y:04d}-{mo:02d}-{d:02d}"
+            except ValueError:
+                return None
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        return s
+    return None
+
 
 def _parse_description(out):
     val = out["make"]
@@ -356,6 +415,12 @@ def _table_value(el):
         except ValueError:
             idx = None
         if idx is not None:
+            # Same-row 2-cell pattern: <tr><th>label</th><td>value</td></tr>
+            for j in range(idx + 1, len(cells)):
+                txt = re.sub(r"\s+", " ", cells[j].get_text(" ", strip=True)).strip()
+                if txt and txt.lower() not in _LABEL_WORDS:
+                    return txt
+            # Next-row same-column pattern (VIC vhr-panel, QLD result rows)
             nxt_tr = parent.find_next_sibling("tr")
             if nxt_tr is None:
                 tbl = parent.find_parent("table")
@@ -375,7 +440,8 @@ def _table_value(el):
 
 
 def _extract_dom(soup):
-    out = {"vin": None, "make": None, "model": None, "year": None, "colour": None, "body_type": None}
+    out = {"vin": None, "make": None, "model": None, "year": None, "colour": None,
+           "body_type": None, "rego_status": None, "rego_expiry_date": None}
     make_label = None
     for field, names in _LABELS.items():
         for el in soup.find_all(True):
@@ -389,6 +455,14 @@ def _extract_dom(soup):
                         m = re.search(r"\d{4}", val)
                         if m:
                             out[field] = int(m.group(0))
+                    elif field == "rego_status":
+                        ns = _normalise_status(val)
+                        if ns:
+                            out[field] = ns
+                    elif field == "rego_expiry_date":
+                        iso = _parse_expiry(val)
+                        if iso:
+                            out[field] = iso
                     else:
                         out[field] = val
                         if field == "make":
@@ -434,13 +508,23 @@ def _extract_result(text, html=None):
 
 def _extract_text(text):
     text = re.sub(r"\s+", " ", text)
-    out = {"vin": None, "make": None, "model": None, "year": None, "colour": None, "body_type": None}
+    out = {"vin": None, "make": None, "model": None, "year": None, "colour": None,
+           "body_type": None, "rego_status": None, "rego_expiry_date": None}
     for key, pat in _FIELDS.items():
         m = re.search(pat, text, re.I)
         if m:
             val = m.group(1).strip()
             if key == "year":
                 out[key] = int(val)
+            elif key == "rego_status":
+                ns = _normalise_status(val)
+                if ns and val.lower() not in _LABEL_WORDS:
+                    out[key] = ns
+            elif key == "rego_expiry_date":
+                if val.lower() not in _LABEL_WORDS and len(val) >= 4:
+                    iso = _parse_expiry(val)
+                    if iso:
+                        out[key] = iso
             elif val.lower() not in _LABEL_WORDS and len(val) >= 2:
                 out[key] = val
     return out
