@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **(AUT-2413):** `POST /lookup` response now includes `rego_status`
+  (`"valid"` | `"expired"` | `"unknown"` | `null`) and `rego_expiry_date`
+  (ISO 8601 `YYYY-MM-DD` | `null`). Parser handles every AU date format the
+  state sites actually render (DD/MM/YYYY, DD-MM-YYYY, DD Month YYYY,
+  DD-Mon-YYYY, Mon DD YYYY, ISO) and NSW's "Registered Until: <date>" layout.
+  New `_normalise_status` / `_parse_date` helpers + `test_rego_status_expiry.py`
+  lock the behaviour across all 8 state shapes.
+
 ### Security
 - **(AUT-2145):** The X-API-Key check now runs as a FastAPI dependency
   (`require_api_key`) that resolves before Pydantic body parsing. Unauthenticated

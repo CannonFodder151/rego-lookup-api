@@ -48,9 +48,17 @@ Response:
   "model": "COROLLA",
   "year": 2019,
   "colour": "SILVER",
-  "body_type": "SEDAN"
+  "body_type": "SEDAN",
+  "rego_status": "valid",
+  "rego_expiry_date": "2026-03-14"
 }
 ```
+
+`rego_status` is `"valid"` (current/registered/active), `"expired"`
+(expired/unregistered/cancelled/surrendered), `"unknown"` (state site returned
+a label we don't recognise — surfaced for the caller to decide) or `null` (no
+status surfaced). `rego_expiry_date` is ISO 8601 `YYYY-MM-DD` or `null`. Both
+fields are always present in the JSON so consumers can rely on the schema.
 
 Status codes:
 
@@ -173,3 +181,21 @@ a clean `404 registration not found` confirms the flow ran):
 
 NT/TAS 502s are pre-existing (identical for car regos of the same format),
 not motorcycle-specific.
+
+## Rego status + expiry (AUT-2413)
+
+Every `/lookup` response includes `rego_status` (`"valid"` | `"expired"` |
+`"unknown"` | `null`) and `rego_expiry_date` (ISO 8601 `YYYY-MM-DD` | `null`).
+The parser handles the date formats each AU state actually renders:
+
+| State | Status label | Date label | Format |
+|---|---|---|---|
+| QLD | `Registration status` | `Registration expiry date` | DD/MM/YYYY |
+| VIC | `Status` | `Registration expiry date` | DD Month YYYY |
+| NSW | `Status` | `Until: <date>` (no Expiry label) | DD/MM/YYYY |
+| WA | `Status` | `Expiry` | DD-Mon-YYYY |
+| SA | `Registration status` | `Expiry date` | DD Month YYYY |
+| NT/TAS/ACT | variants of the above (same patterns) | | |
+
+Unrecognised labels surface as `"unknown"` rather than being silently dropped;
+unparseable dates become `null` so callers can decide how to handle them.

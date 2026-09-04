@@ -28,6 +28,18 @@ _FIELDS = {
     "year": r"\b(?:Year\s*(?:of|by)?\s*(?:manufacture|built|first|model)?|Date of manufacture)\b[:\s]*([0-9]{4})",
     "colour": r"\bColou?r\b[:\s]*([A-Za-z][A-Za-z \-]*?)(?=\s+(?:CTP|Insurer|Model|Make|Body|Year|VIN|Vin|Status|Expiry|Odometer|Compliance)\b|\s*$)",
     "body_type": r"\bBody\s*(?:type|shape)?\b(?!type\b|shape\b)[:\s]*([A-Za-z][A-Za-z0-9 .\-/]*?)(?=\s+(?:State|Status|Model|Make|Year|Colour|Color|VIN|Vin|Expiry)\b|\s*$)",
+    "rego_status": (
+        r"\b(?:Registration\s+)?Status\b[:\s]+([A-Za-z][A-Za-z \-]+?)"
+        r"(?=\s+(?:Registration|VIN|Make|Model|Colour|Color|Body|Year|Expiry|Number|Vehicle|Until)\b|\s*$)"
+    ),
+    "rego_expiry_date": (
+        r"\b(?:Registration\s+)?Expir\w*\s*(?:date)?\b[:\s]+"
+        r"(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}"
+        r"|\d{1,2}[\/\-\s]+[A-Za-z]{3,9}[\/\-\s]+\d{4}"
+        r"|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}"
+        r"|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}"
+        r"|\d{4}-\d{2}-\d{2})"
+    ),
 }
 
 
@@ -51,7 +63,8 @@ def _session():
 
 _LABEL_WORDS = {"number", "chassis", "vin", "make", "model", "colour", "color", "body",
                 "year", "type", "vehicle", "registration", "search", "searching", "value",
-                "field", "required", "vehicle identification number"}
+                "field", "required", "vehicle identification number", "status", "expiry",
+                "expires", "until", "expiry date", "registration status"}
 
 _LABELS = {
     "vin": ("vin", "vehicle identification number", "chassis", "chassis number", "vin number"),
@@ -61,6 +74,9 @@ _LABELS = {
              "model year", "first registered", "year first registered"),
     "colour": ("colour", "color", "vehicle colour", "vehicle color"),
     "body_type": ("body type", "body shape", "body", "body style"),
+    "rego_status": ("registration status", "status", "rego status"),
+    "rego_expiry_date": ("registration expiry date", "registration expires",
+                         "expiry date", "rego expiry", "expiry", "expires"),
 }
 
 _BODY_WORDS = {"wagon", "sedan", "hatchback", "hatch", "coupe", "ute", "utility", "truck",
@@ -375,7 +391,8 @@ def _table_value(el):
 
 
 def _extract_dom(soup):
-    out = {"vin": None, "make": None, "model": None, "year": None, "colour": None, "body_type": None}
+    out = {"vin": None, "make": None, "model": None, "year": None, "colour": None,
+           "body_type": None, "rego_status": None, "rego_expiry_date": None}
     make_label = None
     for field, names in _LABELS.items():
         for el in soup.find_all(True):
@@ -389,6 +406,14 @@ def _extract_dom(soup):
                         m = re.search(r"\d{4}", val)
                         if m:
                             out[field] = int(m.group(0))
+                    elif field == "rego_expiry_date":
+                        iso = _parse_date(val)
+                        if iso:
+                            out[field] = iso
+                    elif field == "rego_status":
+                        norm = _normalise_status(val)
+                        if norm:
+                            out[field] = norm
                     else:
                         out[field] = val
                         if field == "make":
@@ -429,20 +454,123 @@ def _extract_result(text, html=None):
     # model was found.
     if result["make"] and not result["model"]:
         result["make"], result["model"] = _split_make_model(result["make"])
+    # Ensure the two new fields always exist in the returned dict.
+    result.setdefault("rego_status", None)
+    result.setdefault("rego_expiry_date", None)
     return result
+
+
+_MONTHS = {"jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
+            "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
+            "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9, "oct": 10,
+            "october": 10, "nov": 11, "november": 11, "dec": 12, "december": 12}
+
+
+def _normalise_status(val):
+    """Collapse the many ways AU sites say it to valid/expired/unknown.
+
+    valid   = currently registered (Current, Registered, Active, Not expired)
+    expired = not currently registered (Expired, Unregistered, Cancelled, Surrendered)
+    unknown = unrecognised label (we surface it so the caller can decide)
+    """
+    if not val:
+        return None
+    v = val.strip().lower()
+    if not v or v in _LABEL_WORDS:
+        return None
+    # Check expired first: "unregistered" and "not registered" contain the
+    # substring "registered" which would otherwise match valid_words.
+    expired_words = ("expired", "unregistered", "cancelled", "canceled",
+                     "surrendered", "not registered", "lapsed", "revoked")
+    if any(w in v for w in expired_words):
+        return "expired"
+    valid_words = ("current", "registered", "active", "not expired", "valid")
+    if any(w in v for w in valid_words):
+        return "valid"
+    return "unknown"
+
+
+def _parse_date(val):
+    """Parse the date strings the AU rego sites actually render and return
+    ISO 8601 (YYYY-MM-DD) or None. Accepts:
+      - DD/MM/YYYY, DD-MM-YYYY, D/M/YY, D/M/YYYY  (AU standard)
+      - DD Month YYYY, D Month YYYY               (long form, e.g. 14 March 2026)
+      - DD-Mon-YYYY, D-Mon-YYYY                   (short form, e.g. 14-Mar-2026)
+      - Mon DD, YYYY                              (e.g. March 14, 2026)
+      - YYYY-MM-DD                                (already ISO)
+    Anything we can't parse returns None so the caller can decide what to do.
+    """
+    if not val:
+        return None
+    s = val.strip()
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        return s
+    m = re.fullmatch(r"(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})", s)
+    if m:
+        d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if y < 100:
+            y += 2000 if y < 70 else 1900
+        if not (1 <= mo <= 12 and 1 <= d <= 31):
+            return None
+        return f"{y:04d}-{mo:02d}-{d:02d}"
+    # DD-Mon-YYYY / DD-Mon-YY (e.g. "14-Mar-2026", "14-Mar-26")
+    m = re.fullmatch(r"(\d{1,2})[\-]([A-Za-z]+)[\-](\d{2,4})", s)
+    if m:
+        d, mon, y = int(m.group(1)), _MONTHS.get(m.group(2).lower()), int(m.group(3))
+        if y < 100:
+            y += 2000 if y < 70 else 1900
+        if mon and 1 <= d <= 31:
+            return f"{y:04d}-{mon:02d}-{d:02d}"
+    m = re.fullmatch(r"(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})", s)
+    if m:
+        d, mon, y = int(m.group(1)), _MONTHS.get(m.group(2).lower()), int(m.group(3))
+        if mon and 1 <= d <= 31:
+            return f"{y:04d}-{mon:02d}-{d:02d}"
+    m = re.fullmatch(r"([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})", s)
+    if m:
+        mon, d, y = _MONTHS.get(m.group(1).lower()), int(m.group(2)), int(m.group(3))
+        if mon and 1 <= d <= 31:
+            return f"{y:04d}-{mon:02d}-{d:02d}"
+    return None
 
 
 def _extract_text(text):
     text = re.sub(r"\s+", " ", text)
-    out = {"vin": None, "make": None, "model": None, "year": None, "colour": None, "body_type": None}
+    out = {"vin": None, "make": None, "model": None, "year": None, "colour": None,
+           "body_type": None, "rego_status": None, "rego_expiry_date": None}
     for key, pat in _FIELDS.items():
         m = re.search(pat, text, re.I)
         if m:
             val = m.group(1).strip()
             if key == "year":
                 out[key] = int(val)
+            elif key == "rego_expiry_date":
+                iso = _parse_date(val)
+                if iso:
+                    out[key] = iso
+            elif key == "rego_status":
+                norm = _normalise_status(val)
+                if norm:
+                    out[key] = norm
             elif val.lower() not in _LABEL_WORDS and len(val) >= 2:
                 out[key] = val
+    # NSW/VIC style: "Registered Until: 14/03/2026" — capture the date when
+    # no explicit Expiry label was found. We look for "Until" followed by a date
+    # *and* the Status field must already say valid/registered.
+    if not out["rego_expiry_date"]:
+        m = re.search(
+            r"\bUntil\b[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}"
+            r"|\d{1,2}[\-][A-Za-z]+[\-]\d{2,4}"
+            r"|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}"
+            r"|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})",
+            text, re.I)
+        if m:
+            iso = _parse_date(m.group(1))
+            if iso:
+                out["rego_expiry_date"] = iso
+                if not out["rego_status"]:
+                    out["rego_status"] = "valid"
     return out
 
 

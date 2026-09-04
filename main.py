@@ -13,7 +13,7 @@ from slowapi.util import get_remote_address
 
 from providers import UpstreamBlocked, UpstreamError, NotFound, STATES, lookup
 
-APP_VERSION = "1.2.3"
+APP_VERSION = "1.3.0"
 
 API_KEY = os.getenv("API_KEY", "")
 
@@ -114,6 +114,12 @@ class LookupResponse(BaseModel):
     year: int | None = None
     colour: str | None = None
     body_type: str | None = None
+    # AUT-2413: rego status + expiry.
+    # rego_status: "valid" | "expired" | "unknown" | null (state site didn't
+    #   surface a recognisable label; the caller can decide how to handle it).
+    # rego_expiry_date: ISO 8601 (YYYY-MM-DD) | null.
+    rego_status: Literal["valid", "expired", "unknown"] | None = None
+    rego_expiry_date: str | None = None
 
 
 @app.get("/health")
