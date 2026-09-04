@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **(AUT-2468):** The `HEALTHCHECK` now uses `${PORT:-8000}` so it tracks the
+  actual `CMD` port. Previously the check probed `localhost:8000` even when the
+  container was started with `--port 8011`, leaving the rego-lookup container
+  on EP5 (Hosted) in `(unhealthy)` for 18h while still serving traffic.
+
 ### Security
 - **(AUT-2145):** The X-API-Key check now runs as a FastAPI dependency
   (`require_api_key`) that resolves before Pydantic body parsing. Unauthenticated
