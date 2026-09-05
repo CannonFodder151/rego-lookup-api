@@ -1,12 +1,10 @@
-# AUT-1798: x64 jobs dispatch to the new vm2 runner (gh-runner-autobrain-rego-2). ARM stays on Oracle VM.
-name: Build rego-lookup image (multi-arch) + auto-deploy
+# AUT-2224: replace QEMU multi-arch with native per-arch matrix + manifest assembly (AUT-2158 follow-up).
+name: Build rego-lookup image (multi-arch) + auto-deploy hosted
 
 on:
   push:
     branches: [main]
     paths-ignore:
-      # Workflow/doc-only changes (e.g. the weekly security scan) must not
-      # rebuild multi-arch images or redeploy both prod stacks (AUT-1019).
       - '.github/**'
   workflow_dispatch:
     inputs:
@@ -26,15 +24,23 @@ concurrency:
 jobs:
   build:
     if: github.event_name != 'pull_request'
-    runs-on: [self-hosted, linux, x64, vm2]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runs_on: [self-hosted, linux, x64, vm2]
+          - arch: arm64
+            runs_on: [self-hosted, linux, ARM64]
+    runs-on: ${{ matrix.runs_on }}
     permissions:
       contents: read
       packages: write
+    outputs:
+      image-amd64: ${{ steps.build.outputs.image-amd64 }}
+      image-arm64: ${{ steps.build.outputs.image-arm64 }}
     steps:
       - uses: actions/checkout@v4
-
-      - uses: docker/setup-qemu-action@v3
-        if: ${{ github.event.inputs.platforms != 'linux/amd64' }}
 
       - uses: docker/setup-buildx-action@v3
 
@@ -42,31 +48,114 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR_PAT || secrets.GITHUB_TOKEN }}
 
       - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push
-        env:
-          TAG: ${{ github.event.inputs.tag || 'hosted' }}
-          PLATFORMS: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}
+      - name: Verify runner arch (${{ matrix.arch }})
         run: |
           set -euo pipefail
-          docker buildx build --platform "${PLATFORMS}" --push \
-            -t "ghcr.io/cannonfodder151/rego-lookup:${TAG}" \
+          want="${{ matrix.arch }}"
+          got="$(uname -m)"
+          case "$want" in
+            amd64) norm="x86_64";;
+            arm64) norm="aarch64";;
+            *) echo "::error::unknown matrix arch $want"; exit 2;;
+          esac
+          if [ "$got" != "$norm" ]; then
+            echo "::error::runner arch mismatch: want $want (=$norm), got $got"
+            exit 1
+          fi
+          echo "==> runner arch OK: $got ($want)"
+
+      - name: Build and push per-arch image
+        id: build
+        env:
+          TAG: ${{ github.event.inputs.tag || 'hosted' }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          img="ghcr.io/cannonfodder151/rego-lookup-api:${TAG}-${ARCH}"
+          echo "==> building ${img} for linux/${ARCH}"
+          docker buildx build --platform linux/${ARCH} --push \
+            -t "ghcr.io/cannonfodder151/rego-lookup-api:${TAG}-${ARCH}" \
+            -t "cannonfodder151/rego-lookup-api:${TAG}-${ARCH}" \
+            -f Dockerfile .
+          echo "image-${ARCH}=${img}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify pushed image arch (${{ matrix.arch }})
+        env:
+          TAG: ${{ github.event.inputs.tag || 'hosted' }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          case "$ARCH" in
+            amd64) norm="x86_64";;
+            arm64) norm="aarch64";;
+            *) echo "::error::unknown arch $ARCH"; exit 2;;
+          esac
+          img="ghcr.io/cannonfodder151/rego-lookup-api:${TAG}-${ARCH}"
+          echo "==> verifying $img"
+          got="$(docker run --rm --platform linux/${ARCH} "$img" uname -m)"
+          if [ "$got" != "$norm" ]; then
+            echo "::error::$img reports arch=$got, expected $norm — refusing to assemble manifest"
+            exit 1
+          fi
+          docker run --rm --platform linux/${ARCH} "$img" /bin/sh -c 'true'
+          echo "==> ${ARCH} image verified"
+
+  build-manifest:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: [self-hosted, linux, x64, vm2]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_PAT || secrets.GITHUB_TOKEN }}
+
+      - name: Gate manifest assembly on per-arch verification
+        env:
+          TAG: ${{ github.event.inputs.tag || 'hosted' }}
+        run: |
+          set -euo pipefail
+          for arch in amd64 arm64; do
+            img="ghcr.io/cannonfodder151/rego-lookup-api:${TAG}-${arch}"
+            if ! docker buildx imagetools inspect "$img" >/dev/null 2>&1; then
+              echo "::error::$img missing — per-arch build for $arch did not publish. Aborting manifest assembly."
+              exit 1
+            fi
+          done
+
+      - name: Assemble multi-arch manifests
+        id: digest
+        env:
+          TAG: ${{ github.event.inputs.tag || 'hosted' }}
+          SHA_TAG: hosted-sha-${{ github.sha }}
+        run: |
+          set -euo pipefail
+          echo "==> manifest rego-lookup-api:${TAG}"
+          docker buildx imagetools create \
             -t "ghcr.io/cannonfodder151/rego-lookup-api:${TAG}" \
-            -t "cannonfodder151/rego-lookup-api:${TAG}" \
-            -t "cannonfodder151/rego-lookup-api:latest" .
+            -t "ghcr.io/cannonfodder151/rego-lookup-api:${SHA_TAG}" \
+            "ghcr.io/cannonfodder151/rego-lookup-api:${TAG}-amd64" \
+            "ghcr.io/cannonfodder151/rego-lookup-api:${TAG}-arm64"
+          d="$(docker buildx imagetools inspect "ghcr.io/cannonfodder151/rego-lookup-api:${TAG}" --raw | head -n1)"
+          echo "digest=${d}" >> "$GITHUB_OUTPUT"
 
   deploy:
-    needs: build
-    runs-on: [self-hosted, linux, x64, vm2]
+    needs: [build, build-manifest]
     if: ${{ github.event_name == 'push' || github.event.inputs.tag == 'hosted' }}
+    runs-on: [self-hosted, linux, x64, vm2]
     steps:
-      - name: Auto-redeploy both stacks via Portainer (AUT-264)
+      - name: Auto-deploy hosted rego-lookup via Portainer (AUT-264, AUT-2409)
         env:
           PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
           PORTAINER_API_KEY: ${{ secrets.PORTAINER_API_KEY }}
@@ -74,8 +163,6 @@ jobs:
           set -euo pipefail
           BASE="${PORTAINER_URL%/}"
           get_file() {
-            # Portainer can briefly 504 while the previous stack is still
-            # applying (image pull). Retry up to 10x with backoff.
             local stack_id="$1" endpoint_id="$2" n=0 code sc=""
             while [ "${n}" -lt 10 ]; do
               code="$(curl -sS -o /tmp/sc.json -w '%{http_code}' --max-time 120 \
@@ -103,8 +190,6 @@ jobs:
               -H "Content-Type: application/json" --data "$body" \
               "${BASE}/api/stacks/${stack_id}?endpointId=${endpoint_id}" || true)"
             echo "redeploy ${stack_id} on endpoint ${endpoint_id}: HTTP ${code}"
-            # PullImage redeploy is async server-side; 504 just means the
-            # reverse proxy gave up waiting — Portainer still applies it.
             case "${code}" in
               200|201|202|204) : ;;
               504|000) echo "stack ${stack_id}: update triggered (proxy timeout, Portainer applying)"; ;;
@@ -121,7 +206,5 @@ jobs:
             fi
             echo "stack ${stack_id}: API_KEY placeholder check passed"
           }
-          guard_placeholder 75 2   # on-prem plate-api-scraper (10.0.3.17:8011)
           guard_placeholder 85 5   # hosted rego-lookup (152.69.188.133:8011)
-          redeploy 75 2   # on-prem plate-api-scraper (10.0.3.17:8011)
-          redeploy 85 5   # hosted rego-lookup (152.69.188.133:8011)
+          redeploy 85 5           # hosted rego-lookup (152.69.188.133:8011)
