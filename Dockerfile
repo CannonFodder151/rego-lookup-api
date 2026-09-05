@@ -52,3 +52,8 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
 
 ENTRYPOINT ["/app/start.sh"]
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# AUT-2224: HEALTHCHECK uses PORT env (default 8000) so the hosted stack
+# override to 8011 is respected at runtime.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD python -c "import os,urllib.request,sys; p=os.getenv('PORT','8000'); sys.exit(0 if urllib.request.urlopen(f'http://127.0.0.1:{p}/health',timeout=3).status==200 else 1)"
