@@ -86,7 +86,7 @@ jobs:
             -f Dockerfile .
           echo "image-${ARCH}=${img}" >> "$GITHUB_OUTPUT"
 
-      - name: Verify pushed image arch (${{ matrix.arch }})
+      - name: Verify pushed image arch + entrypoint (${{ matrix.arch }})
         env:
           TAG: ${{ github.event.inputs.tag || 'hosted' }}
           ARCH: ${{ matrix.arch }}
@@ -95,16 +95,18 @@ jobs:
           case "$ARCH" in
             amd64) norm="x86_64";;
             arm64) norm="aarch64";;
-            *) echo "::error::unknown arch $ARCH"; exit 2;;
+            *) echo "::error::unknown matrix arch $ARCH"; exit 2;;
           esac
           img="ghcr.io/cannonfodder151/rego-lookup-api:${TAG}-${ARCH}"
           echo "==> verifying $img"
+          # 1. Architecture — catches wrong-arch rootfs (AUT-1877)
           got="$(docker run --rm --platform linux/${ARCH} "$img" uname -m)"
           if [ "$got" != "$norm" ]; then
             echo "::error::$img reports arch=$got, expected $norm — refusing to assemble manifest"
             exit 1
           fi
-          docker run --rm --platform linux/${ARCH} "$img" /bin/sh -c 'true'
+          # 2. Entrypoint (start.sh) can exec — catches exec format error, missing shebang, non-executable (AUT-2194)
+          docker run --rm --platform linux/${ARCH} "$img" /app/start.sh /bin/true
           echo "==> ${ARCH} image verified"
 
   build-manifest:
