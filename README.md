@@ -48,9 +48,16 @@ Response:
   "model": "COROLLA",
   "year": 2019,
   "colour": "SILVER",
-  "body_type": "SEDAN"
+  "body_type": "SEDAN",
+  "rego_status": "valid",
+  "rego_expiry_date": "2025-03-12"
 }
 ```
+
+`rego_status` is one of `valid`, `expired`, `unknown`. `rego_expiry_date` is
+ISO 8601 (`YYYY-MM-DD`). Both are parsed from the state site's "Registration
+status" / "Registration expiry date" rows and are `null` when the upstream
+state page does not surface them, or when the format is not recognised.
 
 Status codes:
 
