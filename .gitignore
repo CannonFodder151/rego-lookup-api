@@ -8,3 +8,6 @@ w2.html
 w3.html
 w4.html
 .venv-pkgs
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
