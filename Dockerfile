@@ -42,7 +42,7 @@ COPY start.sh /app/start.sh
 # AUT-1739: this RUN runs as root (USER not yet switched) so chmod always
 # succeeds regardless of the build host's uid; the non-root switch happens
 # only after the app tree (incl. /app/start.sh) is owned by appuser.
-RUN chmod +x /app/start.sh \
+RUN sed -i 's/\r$//' /app/start.sh && chmod +x /app/start.sh \
     && chown -R appuser:appuser /app /ms-playwright
 USER appuser
 
