@@ -120,7 +120,12 @@ class LookupResponse(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": APP_VERSION}
+    return {"status": "ok"}
+
+
+@app.get("/admin/version")
+def admin_version(_api_key: str = Depends(require_api_key)):
+    return {"version": APP_VERSION}
 
 
 # AUT-2145: API-key check runs as a FastAPI dependency before Pydantic body
