@@ -74,7 +74,6 @@ jobs:
             exit "$rc"
           fi
 
-jobs:
   image-scan:
     runs-on: [self-hosted, linux, x64]
     steps:
