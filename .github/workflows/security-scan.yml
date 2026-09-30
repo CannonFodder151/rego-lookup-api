@@ -40,7 +40,18 @@ permissions:
   contents: read
 
 env:
-  PYTHON_BASE_IMAGE: 'python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285'
+  # Must track the digest in Dockerfile. AUT-1877 (#39, 2026-09-05) re-pinned
+  # the base to the multi-arch index digest; this copy drifted and the scan was
+  # auditing an image rego-lookup-api no longer ships (AUT-4776).
+  #
+  # AUT-4780: the first live scan of the repaired gate found 19 HIGH/CRITICAL
+  # (3 CRITICAL) in the old digest — perl, libpcre2, libsqlite3, gzip, openssl
+  # all behind a Debian point release. Bumped to the current index digest,
+  # which carries perl 5.40.1-6+deb13u1, libpcre2 10.46-1~deb13u2,
+  # libsqlite3 3.46.1-7+deb13u2 and gzip 1.13-1+deb13u1. Same multi-arch index
+  # (amd64/arm64/386/arm/ppc64le/riscv64/s390x), so the AUT-2224 native per-arch
+  # build is unaffected.
+  PYTHON_BASE_IMAGE: 'python:3.13-slim@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b'
 
 jobs:
   # PR-time gate for the *resolved* python dependency tree. Mirrors the
@@ -50,31 +61,39 @@ jobs:
   # is caught on every PR instead of only on the weekly schedule below.
   pip-audit-pr:
     if: github.event_name == 'pull_request'
-    runs-on: [self-hosted, linux, x64]
+    # AUT-4776: GitHub-hosted, not the self-hosted rego runner. Building the
+    # resolved tree (venv + pip-audit + full requirements incl. playwright /
+    # selenium wheels) inside the container OOM-kills the self-hosted VM
+    # (exit 137, "Killed"), which the gate reported identically to a CVE
+    # finding. First live run of the repaired gate proved it.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install pip-audit
-        run: |
-          python3 -m pip --version 2>/dev/null || \
-            curl -sS https://bootstrap.pypa.io/get-pip.py | PIP_BREAK_SYSTEM_PACKAGES=1 python3 -
-          PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install --quiet pip-audit
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
         run: |
           set -euo pipefail
-          VENV="$(mktemp -d)/venv"
-          python3 -m venv "$VENV"
-          # shellcheck disable=SC1091
-          source "$VENV/bin/activate"
-          pip install --quiet -r requirements.txt
-          pip-audit
-          rc=$?
-          deactivate || true
-          if [ "$rc" -ne 0 ]; then
-            echo "::error::resolved-tree pip-audit failed (AUT-1189 transitive CVE gate)" >&2
-            exit "$rc"
-          fi
+          # Run inside the digest-pinned base image rather than a host venv:
+          # the self-hosted runner's system python has no ensurepip
+          # (python3-venv missing), so `python3 -m venv` always failed and the
+          # gate reported a false negative instead of a result (AUT-4776).
+          # The image is exactly what rego-lookup-api ships, so the resolved
+          # tree matches production.
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
+            "$PYTHON_BASE_IMAGE" sh -c '
+              set -eu
+              python3 -m venv /tmp/venv
+              . /tmp/venv/bin/activate
+              pip install --quiet --upgrade pip
+              pip install --quiet pip-audit
+              pip install --quiet -r requirements.txt
+              # `set -eu` propagates the non-zero exit when pip-audit finds a
+              # CVE. The previous explicit rc-capture block was unreachable:
+              # `set -e` had already aborted the script before `rc=$?` ran, so
+              # the "::error::" annotation never fired (AUT-4776).
+              pip-audit
+            '
 
-jobs:
   image-scan:
     runs-on: [self-hosted, linux, x64]
     steps:
@@ -83,8 +102,10 @@ jobs:
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
         run: |
           set -euo pipefail
-          FLOATING="$(grep -nE 'FROM python:[0-9]' Dockerfile || true)"
-          FLOATING="$(printf '%s\n' "$FLOATING" | grep -v '@sha256' || true)"
+          # Anchor on `FROM` and allow the `--platform=` prefix the Dockerfile
+          # actually uses. The old `FROM python:[0-9]` pattern matched nothing,
+          # so the guard passed vacuously and enforced nothing (AUT-4776).
+          FLOATING="$(grep -nE '^FROM .*python:[0-9]' Dockerfile | grep -v '@sha256' || true)"
           if [ -n "$FLOATING" ]; then
             echo "::error::floating python base image detected (missing @sha256 digest):"
             printf '%s\n' "$FLOATING"
