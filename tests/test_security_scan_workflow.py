@@ -133,6 +133,20 @@ class SecurityScanWorkflowTest(unittest.TestCase):
         self.assertTrue(shipped, "Dockerfile has no pinned python base digest")
         self.assertEqual(scanned, shipped, "PYTHON_BASE_IMAGE drifted from Dockerfile")
 
+    def test_pip_audit_does_not_depend_on_host_venv(self):
+        # The runner's system python has no ensurepip, so `python3 -m venv` on
+        # the host always failed and the AUT-1189 gate produced a false
+        # negative. The audit must run inside the pinned base image.
+        job = self.wf["jobs"]["pip-audit-pr"]
+        script = "\n".join(s.get("run", "") for s in job["steps"])
+        self.assertIn("python3 -m venv", script, "expected a venv inside the container")
+        self.assertIn("docker run", script, "audit must run in the pinned image")
+        self.assertIn("$PYTHON_BASE_IMAGE", script)
+        # The old host-venv form built its venv via mktemp outside any
+        # container; that is the variant that broke on the runner.
+        self.assertNotIn("mktemp", script, "host mktemp venv must be gone")
+        self.assertRegex(script, r"python3 -m venv /tmp/venv")
+
 
 if __name__ == "__main__":
     result = unittest.main(argv=[sys.argv[0], "-v"], exit=False).result
