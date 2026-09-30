@@ -146,6 +146,14 @@ class SecurityScanWorkflowTest(unittest.TestCase):
         # container; that is the variant that broke on the runner.
         self.assertNotIn("mktemp", script, "host mktemp venv must be gone")
         self.assertRegex(script, r"python3 -m venv /tmp/venv")
+        # pip-audit must be installed into that venv, not on the host: a bare
+        # `pip-audit` call against a fresh venv exits 127 (command not found),
+        # which reads as a CVE failure but is really a missing-tool failure.
+        self.assertRegex(script, r"pip install --quiet pip-audit")
+        lines = script.splitlines()
+        install_idx = next(i for i, l in enumerate(lines) if "pip install --quiet pip-audit" in l)
+        audit_idx = next(i for i, l in enumerate(lines) if l.strip() == "pip-audit")
+        self.assertLess(install_idx, audit_idx, "install pip-audit before invoking it")
 
 
 if __name__ == "__main__":

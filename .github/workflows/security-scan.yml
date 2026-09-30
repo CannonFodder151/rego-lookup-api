@@ -71,6 +71,8 @@ jobs:
               set -eu
               python3 -m venv /tmp/venv
               . /tmp/venv/bin/activate
+              pip install --quiet --upgrade pip
+              pip install --quiet pip-audit
               pip install --quiet -r requirements.txt
               pip-audit
               rc=$?
