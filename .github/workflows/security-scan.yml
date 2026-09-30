@@ -53,7 +53,12 @@ jobs:
   # is caught on every PR instead of only on the weekly schedule below.
   pip-audit-pr:
     if: github.event_name == 'pull_request'
-    runs-on: [self-hosted, linux, x64]
+    # AUT-4776: GitHub-hosted, not the self-hosted rego runner. Building the
+    # resolved tree (venv + pip-audit + full requirements incl. playwright /
+    # selenium wheels) inside the container OOM-kills the self-hosted VM
+    # (exit 137, "Killed"), which the gate reported identically to a CVE
+    # finding. First live run of the repaired gate proved it.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
@@ -74,12 +79,11 @@ jobs:
               pip install --quiet --upgrade pip
               pip install --quiet pip-audit
               pip install --quiet -r requirements.txt
+              # `set -eu` propagates the non-zero exit when pip-audit finds a
+              # CVE. The previous explicit rc-capture block was unreachable:
+              # `set -e` had already aborted the script before `rc=$?` ran, so
+              # the "::error::" annotation never fired (AUT-4776).
               pip-audit
-              rc=$?
-              if [ "$rc" -ne 0 ]; then
-                echo "::error::resolved-tree pip-audit failed (AUT-1189 transitive CVE gate)" >&2
-                exit "$rc"
-              fi
             '
 
   image-scan:
