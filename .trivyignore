@@ -19,3 +19,23 @@
 CVE-2026-14456  # openssl: unbounded memory growth in a QUIC server; rego serves HTTP via uvicorn, no QUIC/HTTP3 role
 GHSA-6v7p-g79w-8964  # msgpack OOB read on Unpacker reuse; rego does not import msgpack (base-image transitive pkg, unused)
 CVE-2025-47273  # setuptools path traversal in PackageIndex; build-time tool, no easy_install/PackageIndex resolution at runtime
+
+# --- AUT-4780: residual after the digest bump, run 36789061779 ---------------
+# The 2026-09-30 bump (19 HIGH/CRITICAL -> 8) cleared the perl, libpcre2,
+# libsqlite3 and gzip clusters. These two are the remainder, both blocked on
+# an upstream package release that no published `python:3.13-slim` digest
+# carries yet, so the "prefer a digest bump" policy cannot be satisfied today.
+# Revisit when deb13u3 lands in the base image.
+
+# openssl 3.5.7-1~deb13u2 shipped; the fix is 3.5.7-1~deb13u3, not yet in any
+# published digest. Reported against libssl3t64, openssl and
+# openssl-provider-legacy.
+CVE-2026-75804  # openssl: DoS via unenforced QUIC limits; rego serves HTTP/1.1 via uvicorn, never enables a QUIC listener, so the unenforced-limit path is not reached
+CVE-2026-84782  # openssl compat-openssl: info disclosure via integer overflow in pack/unpack; the compat shim is only loaded for legacy ENGINE callers, which rego (ssl + pydantic) does not use
+
+# urllib3 2.7.0 is pip's own vendored copy at
+# site-packages/pip/_vendor/urllib3, not a rego-lookup-api dependency.
+# rego's own urllib3 comes from requirements.txt (requests) and is covered by
+# the AUT-1189 resolved-tree pip-audit gate, which is green.
+CVE-2026-97687  # urllib3: traffic interception via HTTPS proxy TLS; only reachable through pip's vendored copy at build time, never at runtime
+CVE-2026-97689  # urllib3: DoS via unbounded memory; same vendored-copy reasoning as CVE-2026-97687
