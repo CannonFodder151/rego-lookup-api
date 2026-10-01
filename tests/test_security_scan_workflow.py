@@ -80,10 +80,12 @@ class SecurityScanWorkflowTest(unittest.TestCase):
         self.assertIn("jobs", self.wf)
 
     def test_all_three_security_jobs_present(self):
-        self.assertEqual(
-            sorted(self.wf["jobs"]),
-            ["audit", "image-scan", "pip-audit-pr"],
-        )
+        # Subset check, not equality: the gate may gain non-security jobs
+        # (workflow-lint was added by AUT-4776 follow-up) but these three must
+        # never disappear.
+        for job in ("audit", "image-scan", "pip-audit-pr"):
+            with self.subTest(job=job):
+                self.assertIn(job, self.wf["jobs"])
 
     def test_jobs_are_not_shadowed(self):
         # A duplicate `jobs:` silently discards the first block; make sure the
