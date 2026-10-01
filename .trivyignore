@@ -39,25 +39,3 @@ CVE-2026-84782  # openssl compat-openssl: info disclosure via integer overflow i
 # the AUT-1189 resolved-tree pip-audit gate, which is green.
 CVE-2026-97687  # urllib3: traffic interception via HTTPS proxy TLS; only reachable through pip's vendored copy at build time, never at runtime
 CVE-2026-97689  # urllib3: DoS via unbounded memory; same vendored-copy reasoning as CVE-2026-97687
-
-# --- AUT-4780: CVE-2026-103111, published after the digest bump -------------
-# Found by the urllib3 PR's own image-scan (run 36926410230), not by the
-# digest bump. Published 2026-10-01, after the last green scan.
-#
-# Same situation as the openssl entries above: the fix is deb13u3 and no
-# published `python:3.13-slim` index digest carries it (verified against the
-# registry on 2026-10-01 — `7c61056e` is still current and ships
-# libpcre2 10.46-1~deb13u2). The "prefer a digest bump" policy cannot be
-# satisfied until deb13u3 is published, so this is a dated exception.
-#
-# Reachable? No. OOB write via a *crafted regular expression*:
-#   - rego never compiles attacker-supplied patterns. Every re.compile() /
-#     re.sub() / re.match() in the codebase uses a hardcoded literal; the only
-#     re.compile() is main.py `_PLATE_RE = re.compile(r"^[A-Z0-9]{1,8}$")`.
-#   - CPython's `re` is the pure-C `_sre` module and does not link libpcre2 at
-#     all (verified with ldd: zero pcre2 libraries in its dependency list).
-#   - libpcre2 in this image is an apt dependency of the Chromium/Playwright and
-#     wget/xvfb layers. rego drives those browsers over rego.gov.au result
-#     pages; it never hands them a user-supplied regex.
-# Revisit with the openssl entries when deb13u3 lands.
-CVE-2026-103111  # pcre2: OOB write via crafted regex; rego compiles only hardcoded literal patterns and CPython's _sre does not link libpcre2, so no code path reaches the pcre2 compiler
