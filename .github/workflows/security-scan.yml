@@ -20,14 +20,18 @@ on:
       - 'Dockerfile'
       - '.trivyignore'
       - 'requirements.txt'
-      - '.github/workflows/security-scan.yml'
+      - '.github/workflows/**'
+      - 'tests/test_security_scan_workflow.py'
+      - 'tests/test_workflow_lint.py'
   push:
     branches: [main]
     paths:
       - 'Dockerfile'
       - '.trivyignore'
       - 'requirements.txt'
-      - '.github/workflows/security-scan.yml'
+      - '.github/workflows/**'
+      - 'tests/test_security_scan_workflow.py'
+      - 'tests/test_workflow_lint.py'
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
@@ -93,6 +97,22 @@ jobs:
               # the "::error::" annotation never fired (AUT-4776).
               pip-audit
             '
+
+  # AUT-4776 follow-up: the regression tests that guard this file shipped in
+  # #56 but nothing executed them, so a future duplicate-key edit would again
+  # kill the gate with nothing failing. GitHub-hosted: needs no rego runner
+  # and no self-hosted capacity.
+  workflow-lint:
+    name: Workflow lint — no duplicate mapping keys (AUT-4776)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Strict-parse every workflow + assert the gate's own invariants
+        run: |
+          set -euo pipefail
+          pip install --quiet pyyaml
+          python3 tests/test_workflow_lint.py
+          python3 tests/test_security_scan_workflow.py
 
   image-scan:
     runs-on: [self-hosted, linux, x64]
