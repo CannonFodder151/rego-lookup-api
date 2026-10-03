@@ -1,0 +1,42 @@
+name: AUT-5336 proof (bot-opener)
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    branches: [test/aut-5336-botopener]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  open-bot-pr:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open a bot-authored PR via REST
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BR: test/aut-5336-e2e-proof
+          SRC: test/aut-5336-automerge-proof
+        run: |
+          set -euo pipefail
+          git init -q .
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          git fetch -q --depth=1 origin main
+          git checkout -q -b "$BR" FETCH_HEAD
+          mkdir -p .github
+          gh api "repos/$REPO/contents/.github/AUTOMERGE.md?ref=$SRC" \
+            --jq '.content' | base64 -d > .github/AUTOMERGE.md
+          echo "AUT-5336 e2e automerge proof. Safe to delete after verification." > AUT-5336-PROOF.md
+          git add -A
+          git commit -qm "test: AUT-5336 automerge e2e proof"
+          git push -q --force origin "HEAD:refs/heads/$BR"
+          gh api --method POST "repos/$REPO/pulls" \
+            -f title="test: AUT-5336 automerge e2e proof" \
+            -f head="$BR" -f base=main \
+            -f body="TEST-ONLY. Proves the ported automerge workflow squash-merges once a non-author APPROVED review exists. Merged automatically by automerge.yml; file safe to delete afterwards."
+          echo "opened bot-authored PR on $BR"
