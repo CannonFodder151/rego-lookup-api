@@ -59,7 +59,7 @@ jobs:
 
           if echo "$DATA" | jq -e '[.labels[].name] | index("hold") != null' >/dev/null; then echo "skip: 'hold' label set"; exit 0; fi
 
-          ROLLUP="$(gh api "repos/$REPO/pulls/$PR" --jq '[.statusCheckRollup[]?.conclusion] | map(select(. != null)) | all(. == "SUCCESS" or . == "SKIPPED" or . == "NEUTRAL")')"
+          ROLLUP="$(gh api "repos/$REPO/pulls/$PR" --jq '[.statusCheckRollup[]?.conclusion] | all(. == "SUCCESS" or . == "SKIPPED" or . == "NEUTRAL")')"
           if [ "$ROLLUP" != "true" ]; then echo "skip: status checks not green"; exit 0; fi
 
           gh pr merge "$PR" --repo "$REPO" --squash --delete-branch || echo "merge not performed (already merged or transient conflict)"
