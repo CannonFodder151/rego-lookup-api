@@ -2,7 +2,7 @@ name: AUT-5336 proof (bot-opener)
 
 on:
   pull_request:
-    types: [opened]
+    types: [opened, synchronize]
 
 permissions:
   contents: write
