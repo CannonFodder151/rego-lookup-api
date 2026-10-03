@@ -1,5 +1,5 @@
 # AUT-2224: replace QEMU multi-arch with native per-arch matrix + manifest assembly (AUT-2158 follow-up).
-name: Build rego-lookup image (multi-arch) + auto-deploy hosted
+name: Build rego-lookup image (multi-arch) + auto-deploy
 
 on:
   push:
@@ -157,7 +157,7 @@ jobs:
     if: ${{ github.event_name == 'push' || github.event.inputs.tag == 'hosted' }}
     runs-on: [self-hosted, linux, x64, vm2]
     steps:
-      - name: Auto-deploy hosted rego-lookup via Portainer (AUT-264, AUT-2409)
+      - name: Auto-deploy rego-lookup via Portainer (AUT-264, AUT-2411, AUT-5271)
         env:
           PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
           PORTAINER_API_KEY: ${{ secrets.PORTAINER_API_KEY }}
@@ -208,5 +208,29 @@ jobs:
             fi
             echo "stack ${stack_id}: API_KEY placeholder check passed"
           }
-          guard_placeholder 85 5   # hosted rego-lookup (152.69.188.133:8011)
-          redeploy 85 5           # hosted rego-lookup (152.69.188.133:8011)
+          # Hosted (EP5) may only be redeployed inside the 03:00-04:00
+          # Australia/Sydney window. EP2 demo + default are always allowed
+          # (AUT-2411, AUT-5271). Resolved from the Sydney zone so the
+          # guard stays correct across AEDT/AEST. If the zone cannot be
+          # resolved the window is treated as closed (fail-safe: hosted
+          # is never redeployed out of window).
+          in_hosted_window() {
+            local zone
+            zone="$(TZ=Australia/Sydney date +%Z)"
+            case "${zone}" in
+              AEST|AEDT) ;;
+              *) echo "::warning::Australia/Sydney timezone unavailable (got ${zone}); treating hosted window as closed"; return 1;;
+            esac
+            [ "$(TZ=Australia/Sydney date +%H)" = "03" ]
+          }
+          # EP2 (Portainer-Host 10.0.3.17) - rego-lookup for the demo + default
+          # stacks. Any time.
+          guard_placeholder 75 2   # EP2 rego-lookup (10.0.3.17:8011)
+          redeploy 75 2            # EP2 rego-lookup (10.0.3.17:8011)
+          # EP5 (AutoBrain-Hosted 152.69.188.133) - window only.
+          if in_hosted_window; then
+            guard_placeholder 85 5   # hosted rego-lookup (152.69.188.133:8011)
+            redeploy 85 5            # hosted rego-lookup (152.69.188.133:8011)
+          else
+            echo "::notice::hosted stack 85 / EP5 is outside the 03:00-04:00 Australia/Sydney window; skipping redeploy (AUT-2411)"
+          fi
