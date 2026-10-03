@@ -1,0 +1,65 @@
+name: automerge
+
+on:
+  pull_request_review:
+    types: [submitted]
+  pull_request:
+    types: [ready_for_review]
+  check_run:
+    types: [completed]
+  status:
+
+permissions:
+  contents: write
+  pull-requests: read
+  checks: read
+
+jobs:
+  automerge:
+    if: github.event_name != 'check_run' || github.event.check_run.name != 'automerge'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve pull request
+        id: pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          case "${{ github.event_name }}" in
+            pull_request_review|pull_request)
+              PR="${{ github.event.pull_request.number }}"
+              ;;
+            *)
+              PR="$(gh api "repos/$REPO/commits/${{ github.sha }}/pulls" --jq '.[0].number // empty' || true)"
+              ;;
+          esac
+          echo "pr=$PR" >> "$GITHUB_OUTPUT"
+
+      - name: Squash-merge approved PR
+        if: steps.pr.outputs.pr != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          REPO="${{ github.repository }}"
+          PR="${{ steps.pr.outputs.pr }}"
+          DEFAULT="$(gh api "repos/$REPO" --jq '.default_branch')"
+          DATA="$(gh api "repos/$REPO/pulls/$PR")"
+
+          BASE="$(echo "$DATA" | jq -r '.base.ref')"
+          if [ "$BASE" != "$DEFAULT" ]; then echo "skip: base '$BASE' is not '$DEFAULT'"; exit 0; fi
+          if [ "$(echo "$DATA" | jq '.draft')" = "true" ]; then echo "skip: draft PR"; exit 0; fi
+          STATE="$(echo "$DATA" | jq -r '.mergeable_state')"
+          if [ "$STATE" != "clean" ]; then echo "skip: mergeable_state=$STATE"; exit 0; fi
+
+          AUTHOR="$(echo "$DATA" | jq -r '.user.login')"
+          LATEST="$(gh api "repos/$REPO/pulls/$PR/reviews" --arg author "$AUTHOR" --jq 'map(select(.user.login != $author)) | last | .state // ""')"
+          if [ "$LATEST" != "APPROVED" ]; then echo "skip: latest non-author review is '${LATEST:-none}'"; exit 0; fi
+
+          if echo "$DATA" | jq -e '[.labels[].name] | index("hold") != null' >/dev/null; then echo "skip: 'hold' label set"; exit 0; fi
+
+          ROLLUP="$(gh api "repos/$REPO/pulls/$PR" --jq '[.statusCheckRollup[]?.conclusion] | map(select(. != null)) | all(. == "SUCCESS" or . == "SKIPPED" or . == "NEUTRAL")')"
+          if [ "$ROLLUP" != "true" ]; then echo "skip: status checks not green"; exit 0; fi
+
+          gh pr merge "$PR" --repo "$REPO" --squash --delete-branch || echo "merge not performed (already merged or transient conflict)"
