@@ -2,8 +2,7 @@ name: AUT-5336 proof (bot-opener)
 
 on:
   pull_request:
-    types: [opened, synchronize]
-    branches: [test/aut-5336-botopener]
+    types: [opened]
 
 permissions:
   contents: write
@@ -11,7 +10,6 @@ permissions:
 
 jobs:
   open-bot-pr:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Open a bot-authored PR via REST
