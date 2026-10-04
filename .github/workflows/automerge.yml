@@ -5,6 +5,8 @@ on:
     types: [submitted]
   pull_request:
     types: [ready_for_review]
+  issue_comment:
+    types: [created]
   check_run:
     types: [completed]
   status:
@@ -12,7 +14,9 @@ on:
 permissions:
   contents: write
   pull-requests: read
+  issues: read
   checks: read
+  statuses: read
 
 jobs:
   automerge:
@@ -23,15 +27,24 @@ jobs:
         id: pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PULL_REQUEST: ${{ github.event.pull_request.number }}
+          EVENT_COMMENT_ON_PR: ${{ github.event.issue.pull_request.url }}
+          EVENT_SHA: ${{ github.sha }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           REPO="${{ github.repository }}"
-          case "${{ github.event_name }}" in
+          PR=""
+          case "$EVENT_NAME" in
+            issue_comment)
+              # approval markers are PR comments; plain issue comments are ignored
+              if [ -n "$EVENT_COMMENT_ON_PR" ]; then PR="${{ github.event.issue.number }}"; fi
+              ;;
             pull_request_review|pull_request)
-              PR="${{ github.event.pull_request.number }}"
+              PR="$EVENT_PULL_REQUEST"
               ;;
             *)
-              PR="$(gh api "repos/$REPO/commits/${{ github.sha }}/pulls" --jq '.[0].number // empty' || true)"
+              PR="$(gh api "repos/$REPO/commits/$EVENT_SHA/pulls" --jq '.[0].number // empty' || true)"
               ;;
           esac
           echo "pr=$PR" >> "$GITHUB_OUTPUT"
@@ -53,13 +66,57 @@ jobs:
           STATE="$(echo "$DATA" | jq -r '.mergeable_state')"
           if [ "$STATE" != "clean" ]; then echo "skip: mergeable_state=$STATE"; exit 0; fi
 
+          HEAD_SHA="$(echo "$DATA" | jq -r '.head.sha')"
+          CMP="$(gh api "repos/$REPO/compare/$DEFAULT...$HEAD_SHA" --jq '[.status, .ahead_by, .behind_by]')"
+          C_STATUS="$(echo "$CMP" | jq -r '.[0]')"
+          C_AHEAD="$(echo "$CMP" | jq -r '.[1]')"
+          C_BEHIND="$(echo "$CMP" | jq -r '.[2]')"
+          if [ "$C_STATUS" != "ahead" ]; then
+            echo "skip: head $HEAD_SHA is not based on current $DEFAULT (compare status=$C_STATUS ahead_by=$C_AHEAD behind_by=$C_BEHIND) — merge $DEFAULT into the head branch first"
+            exit 0
+          fi
+
+          # Approval bit, route 1: a GitHub review from an identity other than the
+          # PR author. Unreachable while every agent authors as the owning account
+          # (AUT-5401); kept so that a second non-author identity keeps working.
           AUTHOR="$(echo "$DATA" | jq -r '.user.login')"
           LATEST="$(gh api "repos/$REPO/pulls/$PR/reviews" --arg author "$AUTHOR" --jq 'map(select(.user.login != $author)) | last | .state // ""')"
-          if [ "$LATEST" != "APPROVED" ]; then echo "skip: latest non-author review is '${LATEST:-none}'"; exit 0; fi
+          APPROVED=false
+          if [ "$LATEST" = "APPROVED" ]; then APPROVED=true; fi
+
+          # Approval bit, route 2: a Paperclip-attributed approval marker comment.
+          # Agents are one GitHub identity but many Paperclip runs, so the run id
+          # in the marker is what separates approver from author. The PR body must
+          # name the opening run, otherwise author-vs-approver is not checkable and
+          # the gate fails closed. The marker must come from the owning account:
+          # these repos are public, so any GitHub user can comment on a PR.
+          if [ "$APPROVED" != true ]; then
+            OWNER="$(echo "$REPO" | cut -d/ -f1)"
+            COMMENTS="$(gh api "repos/$REPO/issues/$PR/comments?per_page=100" || echo '[]')"
+            MARKER="$(echo "$COMMENTS" | jq -r --arg owner "$OWNER" '[.[] | select(.user.login == $owner) | select(.body | test("paperclip-approve:"))] | last | (.body // "")')"
+            RUN_ID_RE='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+            APPROVE_RUN="$(printf '%s' "$MARKER" | grep -oE "$RUN_ID_RE" | head -1 || true)"
+            OPEN_RUN="$(echo "$DATA" | jq -r '.body // ""' | grep -oE "paperclip-run:[[:space:]]*$RUN_ID_RE" | grep -oE "$RUN_ID_RE" | head -1 || true)"
+            if [ -z "$APPROVE_RUN" ]; then
+              echo "skip: no APPROVED review from a non-author identity and no paperclip-approve marker comment from $OWNER"
+              exit 0
+            fi
+            if [ -z "$OPEN_RUN" ]; then
+              echo "skip: PR body carries no paperclip-run stamp, so the approving run cannot be told apart from the run that opened the PR"
+              exit 0
+            fi
+            if [ "$APPROVE_RUN" = "$OPEN_RUN" ]; then
+              echo "skip: approval marker is from the same Paperclip run that opened the PR ($OPEN_RUN)"
+              exit 0
+            fi
+            echo "approve: paperclip-approve marker from run $APPROVE_RUN, opening run $OPEN_RUN"
+          else
+            echo "approve: APPROVED review from a non-author identity"
+          fi
 
           if echo "$DATA" | jq -e '[.labels[].name] | index("hold") != null' >/dev/null; then echo "skip: 'hold' label set"; exit 0; fi
 
           ROLLUP="$(gh api "repos/$REPO/pulls/$PR" --jq '[.statusCheckRollup[]?.conclusion] | all(. == "SUCCESS" or . == "SKIPPED" or . == "NEUTRAL")')"
           if [ "$ROLLUP" != "true" ]; then echo "skip: status checks not green"; exit 0; fi
 
-          gh pr merge "$PR" --repo "$REPO" --squash --delete-branch || echo "merge not performed (already merged or transient conflict)"
+          gh pr merge "$PR" --repo "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA" || echo "merge not performed (already merged, head moved, or transient conflict)"
