@@ -80,7 +80,8 @@ jobs:
           # PR author. Unreachable while every agent authors as the owning account
           # (AUT-5401); kept so that a second non-author identity keeps working.
           AUTHOR="$(echo "$DATA" | jq -r '.user.login')"
-          LATEST="$(gh api "repos/$REPO/pulls/$PR/reviews" --arg author "$AUTHOR" --jq 'map(select(.user.login != $author)) | last | .state // ""')"
+          REVIEWS="$(gh api "repos/$REPO/pulls/$PR/reviews")"
+          LATEST="$(echo "$REVIEWS" | jq -r --arg author "$AUTHOR" 'map(select(.user.login != $author)) | last | .state // ""')"
           APPROVED=false
           if [ "$LATEST" = "APPROVED" ]; then APPROVED=true; fi
 
