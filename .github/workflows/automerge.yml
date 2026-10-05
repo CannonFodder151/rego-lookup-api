@@ -1,5 +1,15 @@
 name: automerge
 
+# AUT-5654: runs on the self-hosted runner (gh-runner-autobrain-rego, online
+# and idle) instead of a GitHub-hosted one. This repo is private and the
+# account's hosted-runner spending limit is exhausted, so an ubuntu-latest job
+# fails in 3-6 seconds with zero steps and no log — the only evidence is the
+# check-run annotation "The job was not started because recent account
+# payments have failed or your spending limit needs to be increased". That
+# silently broke the auto-merge pipeline (AUT-2230). The pull_request trigger
+# runs the workflow file from the PR head, so this is the same trust
+# consideration as the website repo's equivalent job, where Security review is
+# recorded on AUT-5654.
 on:
   pull_request_review:
     types: [submitted]
@@ -21,7 +31,7 @@ permissions:
 jobs:
   automerge:
     if: github.event_name != 'check_run' || github.event.check_run.name != 'automerge'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - name: Resolve pull request
         id: pr
