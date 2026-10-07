@@ -1,0 +1,63 @@
+# .trivyignore — review-approved exceptions for the trivy base-image CVE gate.
+#
+# Policy (AUT-1735): the base-image scan (.github/workflows/security-scan.yml)
+# fails on HIGH/CRITICAL CVEs that have an upstream fix. Only CVEs listed here
+# are tolerated, each carrying a justification + the issue that approved it.
+# Prefer a digest bump over an ignore entry whenever a fixed image exists.
+#
+# Format: one CVE/GHSA id per line (leading `#` = comment; empty lines ignored).
+#
+# The pinned `python:3.13-slim` base is scanned with `ignore-unfixed: true`, so
+# unfixed CVEs are auto-skipped. The entries below are CVEs that DO have an
+# upstream fix but the current slim digest still carries; they are unreachable
+# in rego-lookup-api's HTTP/uvicorn runtime, so they are accepted (AUT-1735).
+# This mirrors the exception class accepted in the autobrain monorepo.
+
+# --- AUT-1735: residual HIGH CVEs in the python:3.13-slim base image ----------
+# Reachable? No — rego-lookup-api (uvicorn HTTP/1.1) does not use QUIC, msgpack
+# or setuptools package-index resolution at runtime.
+CVE-2026-14456  # openssl: unbounded memory growth in a QUIC server; rego serves HTTP via uvicorn, no QUIC/HTTP3 role
+GHSA-6v7p-g79w-8964  # msgpack OOB read on Unpacker reuse; rego does not import msgpack (base-image transitive pkg, unused)
+CVE-2025-47273  # setuptools path traversal in PackageIndex; build-time tool, no easy_install/PackageIndex resolution at runtime
+
+# --- AUT-4780: residual after the digest bump, run 36789061779 ---------------
+# The 2026-09-30 bump (19 HIGH/CRITICAL -> 8) cleared the perl, libpcre2,
+# libsqlite3 and gzip clusters. These two are the remainder, both blocked on
+# an upstream package release that no published `python:3.13-slim` digest
+# carries yet, so the "prefer a digest bump" policy cannot be satisfied today.
+# Revisit when deb13u3 lands in the base image.
+
+# openssl 3.5.7-1~deb13u2 shipped; the fix is 3.5.7-1~deb13u3, not yet in any
+# published digest. Reported against libssl3t64, openssl and
+# openssl-provider-legacy.
+CVE-2026-75804  # openssl: DoS via unenforced QUIC limits; rego serves HTTP/1.1 via uvicorn, never enables a QUIC listener, so the unenforced-limit path is not reached
+CVE-2026-84782  # openssl compat-openssl: info disclosure via integer overflow in pack/unpack; the compat shim is only loaded for legacy ENGINE callers, which rego (ssl + pydantic) does not use
+
+# urllib3 2.7.0 is pip's own vendored copy at
+# site-packages/pip/_vendor/urllib3, not a rego-lookup-api dependency.
+# rego's own urllib3 comes from requirements.txt (requests) and is covered by
+# the AUT-1189 resolved-tree pip-audit gate, which is green.
+CVE-2026-97687  # urllib3: traffic interception via HTTPS proxy TLS; only reachable through pip's vendored copy at build time, never at runtime
+CVE-2026-97689  # urllib3: DoS via unbounded memory; same vendored-copy reasoning as CVE-2026-97687
+
+# --- AUT-4780: CVE-2026-103111, published after the digest bump -------------
+# Found by the urllib3 PR's own image-scan (run 36926410230), not by the
+# digest bump. Published 2026-10-01, after the last green scan.
+#
+# Same situation as the openssl entries above: the fix is deb13u3 and no
+# published `python:3.13-slim` index digest carries it (verified against the
+# registry on 2026-10-01 — `7c61056e` is still current and ships
+# libpcre2 10.46-1~deb13u2). The "prefer a digest bump" policy cannot be
+# satisfied until deb13u3 is published, so this is a dated exception.
+#
+# Reachable? No. OOB write via a *crafted regular expression*:
+#   - rego never compiles attacker-supplied patterns. Every re.compile() /
+#     re.sub() / re.match() in the codebase uses a hardcoded literal; the only
+#     re.compile() is main.py `_PLATE_RE = re.compile(r"^[A-Z0-9]{1,8}$")`.
+#   - CPython's `re` is the pure-C `_sre` module and does not link libpcre2 at
+#     all (verified with ldd: zero pcre2 libraries in its dependency list).
+#   - libpcre2 in this image is an apt dependency of the Chromium/Playwright and
+#     wget/xvfb layers. rego drives those browsers over rego.gov.au result
+#     pages; it never hands them a user-supplied regex.
+# Revisit with the openssl entries when deb13u3 lands.
+CVE-2026-103111  # pcre2: OOB write via crafted regex; rego compiles only hardcoded literal patterns and CPython's _sre does not link libpcre2, so no code path reaches the pcre2 compiler

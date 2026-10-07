@@ -1,0 +1,28 @@
+fastapi==0.141.1
+starlette==1.6.0
+uvicorn==0.52.3
+slowapi==0.1.10
+pydantic==2.13.4
+requests==2.34.2
+beautifulsoup4==4.15.0
+playwright==1.62.0
+playwright-stealth==2.0.3
+selenium==4.47.0
+undetected-chromedriver==3.5.5
+setuptools==84.0.0
+
+# AUT-1189: transitive floor pins for known-CVE packages. Without these,
+# image builds can resolve to older vulnerable versions if an upstream
+# constraint drifts. Mirrors the pins in autobrain backend/ai/market-data.
+idna>=3.15            # PYSEC-2026-215 / GHSA-65pc-fj4g-8rjx (CVE 3.x<3.15)
+pygments>=2.20        # PYSEC-2023-117 + PYSEC-2026-2987 (CVEs 2.x<2.20)
+# AUT-4780: requests==2.34.2 declares only urllib3<3,>=1.26, so a build can
+# resolve urllib3 1.26.0-2.7.x, which carries CVE-2026-97687 (HTTPS proxy TLS
+# config ignored/overridden) and CVE-2026-97689 (unbounded chunk-size line
+# buffered by HTTPResponse.stream()/read_chunked()). Both are fixed in 2.8.0.
+# rego calls requests over untrusted upstream HTML, so 97689's unbounded read
+# is reachable; 97687 matters whenever a proxy env var is set in the runtime.
+urllib3>=2.8.0        # CVE-2026-97687 + CVE-2026-97689 (CVEs 1.26.0-2.7.x)
+# pycryptodome is not pulled in by the rego-lookup-api tree; floor left out
+# of this file intentionally (pip-audit direct-deps pass would reject a
+# non-resolved >= pin).
