@@ -123,6 +123,9 @@ jobs:
               python3 tests/test_workflow_lint.py
               python3 tests/test_security_scan_workflow.py
             '
+          # Clean up __pycache__ created by the docker container (root-owned)
+          # so the next job can clean the workspace.
+          rm -rf tests/__pycache__
 
   image-scan:
     runs-on: [self-hosted, linux, x64]
