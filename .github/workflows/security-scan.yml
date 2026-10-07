@@ -123,13 +123,9 @@ jobs:
               set -eu
               pip install --quiet --upgrade pip
               pip install --quiet pyyaml
-              python3 tests/test_workflow_lint.py
-              python3 tests/test_security_scan_workflow.py
+              python3 -B tests/test_workflow_lint.py
+              python3 -B tests/test_security_scan_workflow.py
             '
-          # Clean up __pycache__ as root (container user) so runner can
-          # clean workspace. PYTHONDONTWRITEBYTECODE=1 not reliable in venv.
-          docker run --rm -v "$PWD:/ws" -w /ws \
-            "$PYTHON_BASE_IMAGE" sh -c 'rm -rf tests/__pycache__'
 
   image-scan:
     runs-on: [self-hosted, linux, x64]
