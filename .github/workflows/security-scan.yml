@@ -71,6 +71,8 @@ jobs:
     # venv + pip-audit + full requirements. OOM risk from AUT-4776 was
     # on an older VM config; re-evaluate if it recurs.
     runs-on: [self-hosted, linux, x64]
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@v4
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
@@ -84,6 +86,7 @@ jobs:
           # tree matches production.
           docker run --rm -v "$PWD:/ws" -w /ws \
             -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
+            -e PYTHONDONTWRITEBYTECODE=1 \
             "$PYTHON_BASE_IMAGE" sh -c '
               set -eu
               python3 -m venv /tmp/venv
