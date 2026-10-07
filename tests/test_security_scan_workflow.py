@@ -158,13 +158,14 @@ class SecurityScanWorkflowTest(unittest.TestCase):
         audit_idx = next(i for i, l in enumerate(lines) if l.strip() == "pip-audit")
         self.assertLess(install_idx, audit_idx, "install pip-audit before invoking it")
 
-    def test_pip_audit_runs_off_the_memory_constrained_self_hosted_vm(self):
-        # First live run of the repaired gate: building the resolved tree inside
-        # the container OOM-killed the self-hosted rego VM (exit 137, "Killed"),
-        # which reads exactly like a CVE failure. The audit is memory-hungry and
-        # gains nothing from an arch-specific self-hosted runner.
+    def test_pip_audit_runs_on_self_hosted_due_to_billing_failure(self):
+        # AUT-5967: GitHub-hosted runners blocked by billing failure on
+        # CannonFodder151 account (AUT-5962). Self-hosted on Oracle VM
+        # (AutoBrain-Hosted, EP5) has 12.5GB RAM — sufficient for the
+        # venv + pip-audit + full requirements. OOM risk from AUT-4776 was
+        # on an older VM config; re-evaluate if it recurs.
         runs_on = self.wf["jobs"]["pip-audit-pr"]["runs-on"]
-        self.assertEqual(runs_on, "ubuntu-latest", f"pip-audit-pr must not self-host: {runs_on}")
+        self.assertEqual(runs_on, ["self-hosted", "linux", "x64"], f"pip-audit-pr must self-host: {runs_on}")
 
 
 class CveFloorPinTest(unittest.TestCase):
