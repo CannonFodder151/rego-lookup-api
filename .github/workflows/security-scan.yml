@@ -119,7 +119,6 @@ jobs:
           set -euo pipefail
           docker run --rm -v "$PWD:/ws" -w /ws \
             -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
-            -e PYTHONDONTWRITEBYTECODE=1 \
             "$PYTHON_BASE_IMAGE" sh -c '
               set -eu
               pip install --quiet --upgrade pip
@@ -127,6 +126,10 @@ jobs:
               python3 tests/test_workflow_lint.py
               python3 tests/test_security_scan_workflow.py
             '
+          # Clean up __pycache__ as root (container user) so runner can
+          # clean workspace. PYTHONDONTWRITEBYTECODE=1 not reliable in venv.
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            "$PYTHON_BASE_IMAGE" sh -c 'rm -rf tests/__pycache__'
 
   image-scan:
     runs-on: [self-hosted, linux, x64]
