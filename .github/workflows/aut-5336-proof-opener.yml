@@ -1,0 +1,45 @@
+name: AUT-5336 proof (bot-opener)
+
+on:
+  workflow_dispatch:
+    inputs:
+      head_branch:
+        description: Branch to create and open as a bot-authored PR
+        required: true
+        default: test/aut-5336-proof
+      path:
+        description: Proof file path on the PR branch
+        required: true
+        default: .github/AUT-5336-PROOF.md
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  open-proof-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create proof branch + file, open PR (author github-actions[bot])
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD: ${{ inputs.head_branch }}
+          PROOF_PATH: ${{ inputs.path }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/$REPO/git/ref/heads/$HEAD" >/dev/null 2>&1; then
+            echo "::error::branch $HEAD already exists"; exit 1
+          fi
+          BASE="$(gh api "repos/$REPO/git/ref/heads/main" --jq '.object.sha')"
+          gh api -X POST "repos/$REPO/git/refs" -f ref="refs/heads/$HEAD" -f sha="$BASE" --jq '.ref'
+          STAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          printf 'AUT-5336 automerge e2e proof\nMerged automatically by .github/workflows/automerge.yml on %s at %s.\nTEST-ONLY artefact; safe to delete.\n' "$REPO" "$STAMP" > proof.md
+          gh api -X PUT "repos/$REPO/contents/$PROOF_PATH" \
+            -f message="test(AUT-5336): automerge e2e proof file" \
+            -f branch="$HEAD" -f content="$(base64 -w0 proof.md)" --jq '.commit.sha'
+          gh api -X POST "repos/$REPO/pulls" \
+            -f title="test(AUT-5336): automerge e2e proof (bot-authored)" \
+            -f head="$HEAD" -f base=main \
+            -f body="TEST-ONLY. Author is github-actions[bot] so the CannonFodder151 approval counts as a non-author review. automerge.yml should squash-merge this once the review is APPROVED and status checks are green." \
+            --jq '.number'
