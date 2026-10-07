@@ -1,0 +1,143 @@
+# AUT-1735: scan the pinned python base image for HIGH/CRITICAL CVEs and
+# enforce digest pinning (no floating tags).
+#
+# The scan invokes trivy directly via `docker run` with a digest-pinned image
+# (not the GitHub trivy-action) for two reasons:
+#   1. Determinism — the trivy tool image is pinned by digest, just like the
+#      python base image it scans (AUT-1735 policy).
+#   2. Currency — a pinned, recent trivy DB surfaces 2026 CVEs (e.g.
+#      CVE-2026-14456) that an older action-bundled trivy would miss (a false
+#      PASS). Flagged-but-unreachable CVEs are accepted explicitly in .trivyignore
+#      with per-CVE justifications.
+# The repo files (Dockerfile, .trivyignore) come from actions/checkout (works on
+# the rego self-hosted runner, see build.yml).
+
+name: Security — base image CVE scan (trivy)
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - '.trivyignore'
+      - 'requirements.txt'
+      - '.github/workflows/**'
+      - 'tests/test_security_scan_workflow.py'
+      - 'tests/test_workflow_lint.py'
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - '.trivyignore'
+      - 'requirements.txt'
+      - '.github/workflows/**'
+      - 'tests/test_security_scan_workflow.py'
+      - 'tests/test_workflow_lint.py'
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: security-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_BASE_IMAGE: 'python:3.13-slim@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b'
+
+jobs:
+  pip-audit-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
+            "$PYTHON_BASE_IMAGE" sh -c '
+              set -eu
+              python3 -m venv /tmp/venv
+              . /tmp/venv/bin/activate
+              pip install --quiet --upgrade pip
+              pip install --quiet pip-audit
+              pip install --quiet -r requirements.txt
+              pip-audit
+            '
+
+  workflow-lint:
+    name: Workflow lint — no duplicate mapping keys (AUT-4776)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Strict-parse every workflow + assert the gate's own invariants
+        run: |
+          set -euo pipefail
+          pip install --quiet pyyaml
+          python3 tests/test_workflow_lint.py
+          python3 tests/test_security_scan_workflow.py
+
+  image-scan:
+    runs-on: [self-hosted, linux, x64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pin guard — python base image must be digest-pinned (AUT-1735)
+        run: |
+          set -euo pipefail
+          FLOATING="$(grep -nE '^FROM .*python:[0-9]' Dockerfile | grep -v '@sha256' || true)"
+          if [ -n "$FLOATING" ]; then
+            echo "::error::floating python base image detected (missing @sha256 digest):"
+            printf '%s\n' "$FLOATING"
+            exit 1
+          fi
+          echo "OK: python base image is digest-pinned in Dockerfile."
+      - name: Scan pinned python base image (HIGH/CRITICAL, AUT-1735)
+        run: |
+          set -euo pipefail
+          docker pull aquasec/trivy@sha256:ee940acbf1f58ebadb42d01434ce4609530bf1b52536afbd1eee66cd7123c5c9
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            aquasec/trivy@sha256:ee940acbf1f58ebadb42d01434ce4609530bf1b52536afbd1eee66cd7123c5c9 image \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --exit-code 1 \
+            "$PYTHON_BASE_IMAGE" | tee trivy-python-report.txt
+      - name: Report to Discord #status
+        if: always()
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            COLOR=0x57F287; TITLE="Base image scan clean"
+          else
+            COLOR=0xED4245; TITLE="Base image scan found HIGH/CRITICAL CVEs"
+          fi
+          curl -s -X POST https://n8n.nathanmartina.com/webhook/discord-report \
+            -H "Content-Type: application/json" \
+            -d "{\"channel\":\"status\",\"title\":\"$TITLE\",\"description\":\"trivy scan of digest-pinned python:3.13-slim base image (rego-lookup-api).\",\"color\":\"$COLOR\",\"author\":\"Security Scan\",\"fields\":[{\"name\":\"Image\",\"value\":\"python:3.13-slim\",\"inline\":true},{\"name\":\"Run\",\"value\":\"$RUN_URL\",\"inline\":true}]}'
+
+  audit:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, linux, x64]
+    steps:
+      - name: Fail on known vulns in the deployed image
+        id: audit
+        run: |
+          set -euo pipefail
+          docker pull cannonfodder151/rego-lookup-api:hosted
+          docker run --rm cannonfodder151/rego-lookup-api:hosted \
+            sh -c "pip install --quiet pip-audit && pip-audit" \
+            || { echo "result=found" >> "$GITHUB_OUTPUT"; exit 1; }
+          echo "result=clean" >> "$GITHUB_OUTPUT"
+      - name: Report to Discord #status
+        if: always()
+        env:
+          RESULT: ${{ steps.audit.outputs.result }}
+          COLOR: ${{ steps.audit.outputs.result == 'clean' && '0x57F287' || '0xED4245' }}
+          TITLE: ${{ steps.audit.outputs.result == 'clean' && 'Dependency scan clean' || 'Dependency scan found known CVEs' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          curl -s -X POST https://n8n.nathanmartina.com/webhook/discord-report \
+            -H "Content-Type: application/json" \
+            -d "$(jq -nc --arg c status --arg t \"$TITLE\" --arg col \"$COLOR\" --arg u \"$RUN_URL\" '{channel:$c,title:$t,description:"Weekly full-resolution pip-audit of rego-lookup-api requirements.",color:$col,author:"Security Scan",fields:[{name:"Scan",value:"full-resolution (transitive)",inline:true},{name:"Repo",value:"rego-lookup-api",inline:true},{name:"Run",value:$u,inline:true}]}')"
