@@ -65,12 +65,12 @@ jobs:
   # is caught on every PR instead of only on the weekly schedule below.
   pip-audit-pr:
     if: github.event_name == 'pull_request'
-    # AUT-4776: GitHub-hosted, not the self-hosted rego runner. Building the
-    # resolved tree (venv + pip-audit + full requirements incl. playwright /
-    # selenium wheels) inside the container OOM-kills the self-hosted VM
-    # (exit 137, "Killed"), which the gate reported identically to a CVE
-    # finding. First live run of the repaired gate proved it.
-    runs-on: ubuntu-latest
+    # AUT-5967: GitHub-hosted runners blocked by billing failure on
+    # CannonFodder151 account (AUT-5962). Self-hosted on Oracle VM
+    # (AutoBrain-Hosted, EP5) has 12.5GB RAM — sufficient for the
+    # venv + pip-audit + full requirements. OOM risk from AUT-4776 was
+    # on an older VM config; re-evaluate if it recurs.
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
@@ -104,7 +104,11 @@ jobs:
   # and no self-hosted capacity.
   workflow-lint:
     name: Workflow lint — no duplicate mapping keys (AUT-4776)
-    runs-on: ubuntu-latest
+    # AUT-5967: GitHub-hosted runners blocked by billing failure on
+    # CannonFodder151 account (AUT-5962). Self-hosted on Oracle VM
+    # (AutoBrain-Hosted, EP5) — trivial job (pyyaml + unit tests), no
+    # resource concerns.
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
       - name: Strict-parse every workflow + assert the gate's own invariants
