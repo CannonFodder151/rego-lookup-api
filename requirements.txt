@@ -26,3 +26,5 @@ urllib3>=2.8.0        # CVE-2026-97687 + CVE-2026-97689 (CVEs 1.26.0-2.7.x)
 # pycryptodome is not pulled in by the rego-lookup-api tree; floor left out
 # of this file intentionally (pip-audit direct-deps pass would reject a
 # non-resolved >= pin).
+# AUT-6067: force rebuild of :hosted image — verified clean at
+# idna 3.20, pygments 2.21.0, urllib3 2.8.0 (pip-audit clean 2026-10-08)
