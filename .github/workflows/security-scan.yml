@@ -101,22 +101,15 @@ jobs:
   # and no self-hosted capacity.
   workflow-lint:
     name: Workflow lint — no duplicate mapping keys (AUT-4776)
-    # AUT-5962: switched to self-hosted runner. GitHub-hosted ubuntu-latest
-    # runners were not scheduling jobs (0 steps, immediate failure).
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Strict-parse every workflow + assert the gate's own invariants
         run: |
           set -euo pipefail
-          docker run --rm -v "$PWD:/ws" -w /ws \
-            -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
-            "$PYTHON_BASE_IMAGE" sh -c '
-              set -eu
-              python3 -m pip install --quiet pyyaml
-              python3 tests/test_workflow_lint.py
-              python3 tests/test_security_scan_workflow.py
-            '
+          python3 -m pip install --quiet pyyaml
+          python3 tests/test_workflow_lint.py
+          python3 tests/test_security_scan_workflow.py
 
   image-scan:
     runs-on: [self-hosted, linux, x64]
