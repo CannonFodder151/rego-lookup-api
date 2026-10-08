@@ -69,9 +69,11 @@ jobs:
 
   workflow-lint:
     name: Workflow lint — no duplicate mapping keys (AUT-4776)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
+      - name: Install pip via ensurepip
+        run: python3 -m ensurepip --upgrade
       - name: Strict-parse every workflow + assert the gate's own invariants
         run: |
           set -euo pipefail
