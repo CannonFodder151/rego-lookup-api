@@ -126,6 +126,14 @@ jobs:
             --exit-code 1 \
             "$PYTHON_BASE_IMAGE" | tee trivy-python-report.txt
 
+      - name: Upload trivy report artifact (AUT-6063 debug)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-python-report
+          path: trivy-python-report.txt
+          if-no-files-found: warn
+
       - name: Report to Discord #status
         if: always()
         env:
