@@ -109,9 +109,14 @@ jobs:
       - name: Strict-parse every workflow + assert the gate's own invariants
         run: |
           set -euo pipefail
-          pip install --quiet pyyaml
-          python3 tests/test_workflow_lint.py
-          python3 tests/test_security_scan_workflow.py
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
+            "$PYTHON_BASE_IMAGE" sh -c '
+              set -eu
+              python3 -m pip install --quiet pyyaml
+              python3 tests/test_workflow_lint.py
+              python3 tests/test_security_scan_workflow.py
+            '
 
   image-scan:
     runs-on: [self-hosted, linux, x64]
