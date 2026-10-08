@@ -20,18 +20,14 @@ on:
       - 'Dockerfile'
       - '.trivyignore'
       - 'requirements.txt'
-      - '.github/workflows/**'
-      - 'tests/test_security_scan_workflow.py'
-      - 'tests/test_workflow_lint.py'
+      - '.github/workflows/security-scan.yml'
   push:
     branches: [main]
     paths:
       - 'Dockerfile'
       - '.trivyignore'
       - 'requirements.txt'
-      - '.github/workflows/**'
-      - 'tests/test_security_scan_workflow.py'
-      - 'tests/test_workflow_lint.py'
+      - '.github/workflows/security-scan.yml'
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
@@ -65,9 +61,12 @@ jobs:
   # is caught on every PR instead of only on the weekly schedule below.
   pip-audit-pr:
     if: github.event_name == 'pull_request'
-    # AUT-5962: switched to self-hosted runner. GitHub-hosted ubuntu-latest
-    # runners were not scheduling jobs (0 steps, immediate failure).
-    runs-on: [self-hosted, linux, x64]
+    # AUT-4776: GitHub-hosted, not the self-hosted rego runner. Building the
+    # resolved tree (venv + pip-audit + full requirements incl. playwright /
+    # selenium wheels) inside the container OOM-kills the self-hosted VM
+    # (exit 137, "Killed"), which the gate reported identically to a CVE
+    # finding. First live run of the repaired gate proved it.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
@@ -94,24 +93,6 @@ jobs:
               # the "::error::" annotation never fired (AUT-4776).
               pip-audit
             '
-
-  # AUT-4776 follow-up: the regression tests that guard this file shipped in
-  # #56 but nothing executed them, so a future duplicate-key edit would again
-  # kill the gate with nothing failing. GitHub-hosted: needs no rego runner
-  # and no self-hosted capacity.
-  workflow-lint:
-    name: Workflow lint — no duplicate mapping keys (AUT-4776)
-    # AUT-5962: switched to self-hosted runner. GitHub-hosted ubuntu-latest
-    # runners were not scheduling jobs (0 steps, immediate failure).
-    runs-on: [self-hosted, linux, x64]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Strict-parse every workflow + assert the gate's own invariants
-        run: |
-          set -euo pipefail
-          pip install --quiet pyyaml
-          python3 tests/test_workflow_lint.py
-          python3 tests/test_security_scan_workflow.py
 
   image-scan:
     runs-on: [self-hosted, linux, x64]

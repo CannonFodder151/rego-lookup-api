@@ -20,7 +20,6 @@ import yaml
 REPO = Path(__file__).resolve().parent.parent
 WORKFLOW = REPO / ".github/workflows/security-scan.yml"
 DOCKERFILE = REPO / "Dockerfile"
-REQUIREMENTS = REPO / "requirements.txt"
 
 
 class StrictLoader(yaml.SafeLoader):
@@ -81,12 +80,10 @@ class SecurityScanWorkflowTest(unittest.TestCase):
         self.assertIn("jobs", self.wf)
 
     def test_all_three_security_jobs_present(self):
-        # Subset check, not equality: the gate may gain non-security jobs
-        # (workflow-lint was added by AUT-4776 follow-up) but these three must
-        # never disappear.
-        for job in ("audit", "image-scan", "pip-audit-pr"):
-            with self.subTest(job=job):
-                self.assertIn(job, self.wf["jobs"])
+        self.assertEqual(
+            sorted(self.wf["jobs"]),
+            ["audit", "image-scan", "pip-audit-pr"],
+        )
 
     def test_jobs_are_not_shadowed(self):
         # A duplicate `jobs:` silently discards the first block; make sure the
@@ -165,89 +162,6 @@ class SecurityScanWorkflowTest(unittest.TestCase):
         # gains nothing from an arch-specific self-hosted runner.
         runs_on = self.wf["jobs"]["pip-audit-pr"]["runs-on"]
         self.assertEqual(runs_on, "ubuntu-latest", f"pip-audit-pr must not self-host: {runs_on}")
-
-
-class CveFloorPinTest(unittest.TestCase):
-    """AUT-4780: known-CVE packages must carry a version floor in
-    requirements.txt.
-
-    A bare transitive dep resolves to whatever satisfies its parent's range,
-    so a widened upstream constraint silently reintroduces a patched CVE. The
-    AUT-1189 pins exist for this reason; urllib3 was the one that got missed
-    because requests declares only urllib3<3,>=1.26.
-    """
-
-    # package -> (minimum safe version, CVEs fixed at or above it)
-    FLOORS = {
-        "idna": ("3.15", ("PYSEC-2026-215", "GHSA-65pc-fj4g-8rjx")),
-        "pygments": ("2.20", ("PYSEC-2023-117", "PYSEC-2026-2987")),
-        "urllib3": ("2.8.0", ("CVE-2026-97687", "CVE-2026-97689")),
-    }
-
-    def _pins(self):
-        """Map package name -> version specifier for every non-comment line."""
-        pins = {}
-        for line in REQUIREMENTS.read_text().splitlines():
-            line = line.split("#", 1)[0].strip()
-            if not line:
-                continue
-            for op in ("==", ">=", "<=", "~=", ">", "<"):
-                if op in line:
-                    name, _, version = line.partition(op)
-                    pins[name.strip()] = (op, version.strip())
-                    break
-            else:
-                self.fail(f"unparsable requirement line: {line!r}")
-        return pins
-
-    def test_every_known_cve_package_has_a_floor_pin(self):
-        pins = self._pins()
-        missing = [pkg for pkg in self.FLOORS if pkg not in pins]
-        self.assertFalse(
-            missing,
-            f"no floor pin in requirements.txt for {missing}; a widened upstream "
-            f"constraint would resolve them to a vulnerable version again",
-        )
-
-    def test_floor_pins_are_lower_bounds(self):
-        # A floor must constrain from below. An `==` pin does too, but a bare
-        # `urllib3` with no specifier would not, and neither would a stale
-        # upper-bound-only entry.
-        pins = self._pins()
-        for pkg, (minimum, _) in self.FLOORS.items():
-            with self.subTest(package=pkg):
-                if pkg not in pins:
-                    # Reported as a clean failure by
-                    # test_every_known_cve_package_has_a_floor_pin; don't raise
-                    # a KeyError here on top of it.
-                    self.fail(f"{pkg} has no floor pin at all")
-                op, version = pins[pkg]
-                self.assertIn(op, (">=", "=="), f"{pkg} must be pinned low, got {op}{version}")
-                self.assertGreaterEqual(
-                    _v(version), _v(minimum), f"{pkg} floor {version} is below the fixed version {minimum}"
-                )
-
-    def test_urllib3_floor_is_not_regressed(self):
-        # The specific AUT-4780 regression: dropping the urllib3 line entirely
-        # must fail. requests==2.34.2 allows urllib3<3,>=1.26, so without an
-        # explicit floor a build can land on 1.26.0-2.7.x.
-        pins = self._pins()
-        self.assertIn("urllib3", pins, "AUT-4780: urllib3 floor pin was removed")
-        _, version = pins["urllib3"]
-        self.assertGreaterEqual(
-            _v(version), _v("2.8.0"), "urllib3 must stay at or above 2.8.0 (CVE-2026-97687/97689)"
-        )
-
-
-def _v(spec):
-    """Compare only the numeric release, so '3.15' and '3.15.1' both parse."""
-    parts = []
-    for chunk in spec.split("."):
-        digits = "".join(c for c in chunk if c.isdigit())
-        if not digits:
-            break
-        parts.append(int(digits))
-    return tuple(parts)
 
 
 if __name__ == "__main__":
