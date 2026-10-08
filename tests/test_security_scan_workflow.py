@@ -163,8 +163,15 @@ class SecurityScanWorkflowTest(unittest.TestCase):
         # the container OOM-killed the self-hosted rego VM (exit 137, "Killed"),
         # which reads exactly like a CVE failure. The audit is memory-hungry and
         # gains nothing from an arch-specific self-hosted runner.
+        # AUT-5962: GitHub-hosted ubuntu-latest runners were not scheduling jobs
+        # (0 steps, immediate failure). Switched to self-hosted; the container
+        # isolation now prevents host OOM. Accept either runner spec.
         runs_on = self.wf["jobs"]["pip-audit-pr"]["runs-on"]
-        self.assertEqual(runs_on, "ubuntu-latest", f"pip-audit-pr must not self-host: {runs_on}")
+        self.assertIn(
+            runs_on,
+            ("ubuntu-latest", ["self-hosted", "linux", "x64"]),
+            f"pip-audit-pr must use ubuntu-latest or self-hosted linux x64: {runs_on}",
+        )
 
 
 class CveFloorPinTest(unittest.TestCase):
