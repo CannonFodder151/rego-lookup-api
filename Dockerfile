@@ -1,6 +1,8 @@
 # AUT-1877: pin the multi-arch index digest (not a single-arch manifest) and
 # select the per-platform base so QEMU arm64 builds get an arm64 rootfs.
-FROM --platform=$TARGETPLATFORM python:3.13-slim@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b
+# AUT-6089: bumped to 2026-10-06 index digest to clear pip-audit HIGH/CRITICALs
+# found in the deployed :hosted image (openssl, pcre2, urllib3 clusters).
+FROM --platform=$TARGETPLATFORM python:3.13-slim@sha256:bf44cdfcb76cd3b41e879bc058fc37ec5872002ccfde7fcb765e218cde0cd79c
 
 ARG TARGETARCH
 

@@ -55,7 +55,12 @@ env:
   # libsqlite3 3.46.1-7+deb13u2 and gzip 1.13-1+deb13u1. Same multi-arch index
   # (amd64/arm64/386/arm/ppc64le/riscv64/s390x), so the AUT-2224 native per-arch
   # build is unaffected.
-  PYTHON_BASE_IMAGE: 'python:3.13-slim@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b'
+  #
+  # AUT-6089: bumped to 2026-10-06 index digest (sha256:bf44cdfc...) to clear
+  # pip-audit HIGH/CRITICALs found in the deployed :hosted image (openssl,
+  # pcre2, urllib3 clusters). The new digest carries deb13u2+ fixes for the
+  # previously flagged packages.
+  PYTHON_BASE_IMAGE: 'python:3.13-slim@sha256:bf44cdfcb76cd3b41e879bc058fc37ec5872002ccfde7fcb765e218cde0cd79c'
 
 jobs:
   # PR-time gate for the *resolved* python dependency tree. Mirrors the
