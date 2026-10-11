@@ -54,7 +54,7 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     steps:
       - name: Force-clean stale __pycache__ before checkout
-        run: sudo rm -rf **/__pycache__ 2>/dev/null || true
+        run: sudo find "$PWD" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
       - uses: actions/checkout@v4
         with:
           clean: true
@@ -78,7 +78,7 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     steps:
       - name: Force-clean stale __pycache__ before checkout
-        run: sudo rm -rf **/__pycache__ 2>/dev/null || true
+        run: sudo find "$PWD" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
       - uses: actions/checkout@v4
         with:
           clean: true
@@ -95,7 +95,7 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     steps:
       - name: Force-clean stale __pycache__ before checkout
-        run: sudo rm -rf **/__pycache__ 2>/dev/null || true
+        run: sudo find "$PWD" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
       - uses: actions/checkout@v4
         with:
           clean: true
