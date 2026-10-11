@@ -54,12 +54,8 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     steps:
       - name: Force-clean workspace before checkout
-        run: |
-          sudo find "$PWD" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} + 2>/dev/null || true
-          sudo find "$PWD" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+        run: sudo rm -rf "$PWD"/* "$PWD"/.[^.]* 2>/dev/null || true
       - uses: actions/checkout@v4
-        with:
-          clean: false
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
         run: |
           set -euo pipefail
@@ -80,12 +76,8 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     steps:
       - name: Force-clean workspace before checkout
-        run: |
-          sudo find "$PWD" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} + 2>/dev/null || true
-          sudo find "$PWD" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+        run: sudo rm -rf "$PWD"/* "$PWD"/.[^.]* 2>/dev/null || true
       - uses: actions/checkout@v4
-        with:
-          clean: false
       - name: Install pip via ensurepip
         run: python3 -m ensurepip --upgrade
       - name: Strict-parse every workflow + assert the gate's own invariants
@@ -99,12 +91,8 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     steps:
       - name: Force-clean workspace before checkout
-        run: |
-          sudo find "$PWD" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} + 2>/dev/null || true
-          sudo find "$PWD" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+        run: sudo rm -rf "$PWD"/* "$PWD"/.[^.]* 2>/dev/null || true
       - uses: actions/checkout@v4
-        with:
-          clean: false
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
         run: |
           set -euo pipefail
