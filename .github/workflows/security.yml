@@ -53,11 +53,13 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Force-clean stale __pycache__ before checkout
-        run: sudo find "$PWD" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+      - name: Force-clean workspace before checkout
+        run: |
+          sudo find "$PWD" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} + 2>/dev/null || true
+          sudo find "$PWD" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
       - uses: actions/checkout@v4
         with:
-          clean: true
+          clean: false
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
         run: |
           set -euo pipefail
@@ -77,11 +79,13 @@ jobs:
     name: Workflow lint — no duplicate mapping keys (AUT-4776)
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Force-clean stale __pycache__ before checkout
-        run: sudo find "$PWD" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+      - name: Force-clean workspace before checkout
+        run: |
+          sudo find "$PWD" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} + 2>/dev/null || true
+          sudo find "$PWD" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
       - uses: actions/checkout@v4
         with:
-          clean: true
+          clean: false
       - name: Install pip via ensurepip
         run: python3 -m ensurepip --upgrade
       - name: Strict-parse every workflow + assert the gate's own invariants
@@ -94,11 +98,13 @@ jobs:
   image-scan:
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Force-clean stale __pycache__ before checkout
-        run: sudo find "$PWD" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+      - name: Force-clean workspace before checkout
+        run: |
+          sudo find "$PWD" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} + 2>/dev/null || true
+          sudo find "$PWD" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
       - uses: actions/checkout@v4
         with:
-          clean: true
+          clean: false
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
         run: |
           set -euo pipefail
