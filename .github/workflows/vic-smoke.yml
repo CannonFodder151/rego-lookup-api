@@ -7,6 +7,8 @@ jobs:
   vic-motorcycle:
     runs-on: [self-hosted, linux, x64, vm2]
     steps:
+      - name: Clean stale __pycache__ directories
+        run: find . -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:

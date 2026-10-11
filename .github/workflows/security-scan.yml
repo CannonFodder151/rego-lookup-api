@@ -74,6 +74,8 @@ jobs:
     # runners were not scheduling jobs (0 steps, immediate failure).
     runs-on: [self-hosted, linux, x64]
     steps:
+      - name: Clean stale __pycache__ directories
+        run: find . -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
       - uses: actions/checkout@v4
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
         run: |
@@ -108,6 +110,8 @@ jobs:
     name: Workflow lint — no duplicate mapping keys (AUT-4776)
     runs-on: [self-hosted, linux, x64]
     steps:
+      - name: Clean stale __pycache__ directories
+        run: find . -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
       - uses: actions/checkout@v4
       - name: Install python3-venv and create venv for pyyaml
         run: |
@@ -126,6 +130,8 @@ jobs:
   image-scan:
     runs-on: ubuntu-latest
     steps:
+      - name: Clean stale __pycache__ directories
+        run: find . -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
       - uses: actions/checkout@v4
 
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
