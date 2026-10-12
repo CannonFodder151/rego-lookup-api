@@ -54,7 +54,10 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     steps:
       - name: Force-clean workspace before checkout
-        run: sudo rm -rf "$PWD"/* "$PWD"/.[^.]* 2>/dev/null || true
+        run: |
+          ls -la "$PWD"
+          sudo rm -rf "$PWD"/.git "$PWD"/* "$PWD"/.[^.]* 2>/dev/null || true
+          ls -la "$PWD"
       - uses: actions/checkout@v4
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
         run: |
@@ -76,7 +79,10 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     steps:
       - name: Force-clean workspace before checkout
-        run: sudo rm -rf "$PWD"/* "$PWD"/.[^.]* 2>/dev/null || true
+        run: |
+          ls -la "$PWD"
+          sudo rm -rf "$PWD"/.git "$PWD"/* "$PWD"/.[^.]* 2>/dev/null || true
+          ls -la "$PWD"
       - uses: actions/checkout@v4
       - name: Install pip via ensurepip
         run: python3 -m ensurepip --upgrade
@@ -91,7 +97,10 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     steps:
       - name: Force-clean workspace before checkout
-        run: sudo rm -rf "$PWD"/* "$PWD"/.[^.]* 2>/dev/null || true
+        run: |
+          ls -la "$PWD"
+          sudo rm -rf "$PWD"/.git "$PWD"/* "$PWD"/.[^.]* 2>/dev/null || true
+          ls -la "$PWD"
       - uses: actions/checkout@v4
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
         run: |
