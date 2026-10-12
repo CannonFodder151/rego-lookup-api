@@ -102,8 +102,8 @@ class SecurityScanWorkflowTest(unittest.TestCase):
 
     def test_pre_checkout_pycache_cleanup_in_all_self_hosted_jobs(self):
         # AUT-6319: root-owned __pycache__ from prior docker runs block
-        # actions/checkout@v4 git clean. Every self-hosted job must clean
-        # __pycache__ before checkout.
+        # actions/checkout@v4 git clean. Every self-hosted job WITH a checkout
+        # step must clean __pycache__ before checkout.
         for job_name, job in self.wf["jobs"].items():
             runs_on = job.get("runs-on", [])
             if isinstance(runs_on, str):
@@ -116,7 +116,9 @@ class SecurityScanWorkflowTest(unittest.TestCase):
                     (i for i, s in enumerate(steps) if s.get("uses", "").startswith("actions/checkout")),
                     None,
                 )
-                self.assertIsNotNone(checkout_idx, f"{job_name} must have a checkout step")
+                if checkout_idx is None:
+                    # Jobs without checkout (e.g. audit) don't need this guard
+                    continue
                 pre_checkout = steps[:checkout_idx]
                 found = any(
                     "__pycache__" in s.get("run", "") and "docker run" in s.get("run", "")
