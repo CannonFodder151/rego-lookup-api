@@ -106,13 +106,11 @@ jobs:
   # and no self-hosted capacity.
   workflow-lint:
     name: Workflow lint — no duplicate mapping keys (AUT-4776)
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     steps:
       - name: Clean stale __pycache__ directories
         run: find . -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
       - uses: actions/checkout@v4
-      - name: Install pip via ensurepip
-        run: python3 -m ensurepip --upgrade
       - name: Strict-parse every workflow + assert the gate's own invariants
         run: |
           set -euo pipefail
