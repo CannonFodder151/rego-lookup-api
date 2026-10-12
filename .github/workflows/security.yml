@@ -53,18 +53,9 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Debug workspace permissions
+      - name: Clean workspace via docker (root)
         run: |
-          echo "=== whoami ==="
-          whoami
-          echo "=== sudo test ==="
-          sudo -n true 2>&1 || echo "SUDO_NOT_AVAILABLE"
-          echo "=== ls workspace ==="
-          ls -la "$PWD"
-          echo "=== find pycache ==="
-          find "$PWD" -name __pycache__ -type d 2>/dev/null || echo "NO_PYCACHE"
-          echo "=== stat pycache ==="
-          find "$PWD" -name "*.pyc" -exec ls -la {} \; 2>/dev/null || echo "NO_PYC"
+          docker run --rm -v "$PWD":/workspace -w /workspace alpine:3.20 sh -c 'rm -rf /workspace/* /workspace/.[^.]* 2>/dev/null || true'
       - uses: actions/checkout@v4
         with:
           clean: false
@@ -87,18 +78,9 @@ jobs:
     name: Workflow lint — no duplicate mapping keys (AUT-4776)
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Debug workspace permissions
+      - name: Clean workspace via docker (root)
         run: |
-          echo "=== whoami ==="
-          whoami
-          echo "=== sudo test ==="
-          sudo -n true 2>&1 || echo "SUDO_NOT_AVAILABLE"
-          echo "=== ls workspace ==="
-          ls -la "$PWD"
-          echo "=== find pycache ==="
-          find "$PWD" -name __pycache__ -type d 2>/dev/null || echo "NO_PYCACHE"
-          echo "=== stat pycache ==="
-          find "$PWD" -name "*.pyc" -exec ls -la {} \; 2>/dev/null || echo "NO_PYC"
+          docker run --rm -v "$PWD":/workspace -w /workspace alpine:3.20 sh -c 'rm -rf /workspace/* /workspace/.[^.]* 2>/dev/null || true'
       - uses: actions/checkout@v4
         with:
           clean: false
@@ -114,18 +96,9 @@ jobs:
   image-scan:
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Debug workspace permissions
+      - name: Clean workspace via docker (root)
         run: |
-          echo "=== whoami ==="
-          whoami
-          echo "=== sudo test ==="
-          sudo -n true 2>&1 || echo "SUDO_NOT_AVAILABLE"
-          echo "=== ls workspace ==="
-          ls -la "$PWD"
-          echo "=== find pycache ==="
-          find "$PWD" -name __pycache__ -type d 2>/dev/null || echo "NO_PYCACHE"
-          echo "=== stat pycache ==="
-          find "$PWD" -name "*.pyc" -exec ls -la {} \; 2>/dev/null || echo "NO_PYC"
+          docker run --rm -v "$PWD":/workspace -w /workspace alpine:3.20 sh -c 'rm -rf /workspace/* /workspace/.[^.]* 2>/dev/null || true'
       - uses: actions/checkout@v4
         with:
           clean: false
