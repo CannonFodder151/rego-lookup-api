@@ -53,11 +53,11 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Force-clean workspace before checkout
+      - name: Prepare workspace
         run: |
-          ls -la "$PWD"
           sudo rm -rf "$PWD"/.git "$PWD"/* "$PWD"/.[^.]* 2>/dev/null || true
-          ls -la "$PWD"
+          git init
+          git remote add origin "https://github.com/${{ github.repository }}.git"
       - uses: actions/checkout@v4
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
         run: |
@@ -78,11 +78,11 @@ jobs:
     name: Workflow lint — no duplicate mapping keys (AUT-4776)
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Force-clean workspace before checkout
+      - name: Prepare workspace
         run: |
-          ls -la "$PWD"
           sudo rm -rf "$PWD"/.git "$PWD"/* "$PWD"/.[^.]* 2>/dev/null || true
-          ls -la "$PWD"
+          git init
+          git remote add origin "https://github.com/${{ github.repository }}.git"
       - uses: actions/checkout@v4
       - name: Install pip via ensurepip
         run: python3 -m ensurepip --upgrade
@@ -96,11 +96,11 @@ jobs:
   image-scan:
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Force-clean workspace before checkout
+      - name: Prepare workspace
         run: |
-          ls -la "$PWD"
           sudo rm -rf "$PWD"/.git "$PWD"/* "$PWD"/.[^.]* 2>/dev/null || true
-          ls -la "$PWD"
+          git init
+          git remote add origin "https://github.com/${{ github.repository }}.git"
       - uses: actions/checkout@v4
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
         run: |
