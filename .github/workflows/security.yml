@@ -84,14 +84,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           clean: false
-      - name: Install pip via ensurepip
-        run: python3 -m ensurepip --upgrade
-      - name: Strict-parse every workflow + assert the gate's own invariants
+      - name: Run workflow lint tests in docker (AUT-4776)
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet pyyaml
-          python3 tests/test_workflow_lint.py
-          python3 tests/test_security_scan_workflow.py
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            "$PYTHON_BASE_IMAGE" sh -c '
+              set -eu
+              python3 -m venv /tmp/venv
+              . /tmp/venv/bin/activate
+              pip install --quiet --upgrade pip
+              pip install --quiet pyyaml
+              python3 tests/test_workflow_lint.py
+              python3 tests/test_security_scan_workflow.py
+            '
 
   image-scan:
     runs-on: [self-hosted, linux, x64]
