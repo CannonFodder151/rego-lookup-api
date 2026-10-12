@@ -53,6 +53,10 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: [self-hosted, linux, x64]
     steps:
+      - name: Clean root-owned __pycache__ from prior runs
+        run: |
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            alpine sh -c 'find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true'
       - uses: actions/checkout@v4
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
         run: |
@@ -73,19 +77,38 @@ jobs:
     name: Workflow lint — no duplicate mapping keys (AUT-4776)
     runs-on: [self-hosted, linux, x64]
     steps:
+      - name: Clean root-owned __pycache__ from prior runs
+        run: |
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            alpine sh -c 'find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true'
       - uses: actions/checkout@v4
-      - name: Install pip via ensurepip
-        run: python3 -m ensurepip --upgrade
       - name: Strict-parse every workflow + assert the gate's own invariants
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet pyyaml
-          python3 tests/test_workflow_lint.py
-          python3 tests/test_security_scan_workflow.py
+          # AUT-6315: run inside the pinned base image — the self-hosted
+          # runner's system python has no ensurepip and no passwordless sudo,
+          # so pip cannot be installed on the host. The image has pip.
+          # AUT-6319: PYTHONDONTWRITEBYTECODE=1 prevents root-owned __pycache__ in mounted workspace.
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
+            -e PYTHONDONTWRITEBYTECODE=1 \
+            "$PYTHON_BASE_IMAGE" sh -c '
+              set -eu
+              pip install --quiet pyyaml
+              python tests/test_workflow_lint.py
+              python tests/test_security_scan_workflow.py
+            '
+      - name: Clean up any __pycache__ created by docker run
+        run: |
+          find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
   image-scan:
     runs-on: [self-hosted, linux, x64]
     steps:
+      - name: Clean root-owned __pycache__ from prior runs
+        run: |
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            alpine sh -c 'find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true'
       - uses: actions/checkout@v4
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
         run: |
@@ -119,12 +142,16 @@ jobs:
           fi
           curl -s -X POST https://n8n.nathanmartina.com/webhook/discord-report \
             -H "Content-Type: application/json" \
-            -d "{\"channel\":\"status\",\"title\":\"$TITLE\",\"description\":\"trivy scan of digest-pinned python:3.13-slim base image (rego-lookup-api).\",\"color\":\"$COLOR\",\"author\":\"Security Scan\",\"fields\":[{\"name\":\"Image\",\"value\":\"python:3.13-slim\",\"inline\":true},{\"name\":\"Run\",\"value\":\"$RUN_URL\",\"inline\":true}]}'
+            -d "{\"channel\":\"status\",\"title\":\"$TITLE\",\"description\":\"trivy scan of digest-pinned python:3.13-slim base image (rego-lookup-api).\",\"color\":\"$COLOR\",\"author\":\"Security Scan\",\"fields\":[{\"name\":\"Image\",\"value\":\"python:3.13-slim\",\"inline\":true},{\"name\":\"Run\",\"value\":\"$RUN_URL\",\"inline\":true}]}"
 
   audit:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, linux, x64]
     steps:
+      - name: Clean root-owned __pycache__ from prior runs
+        run: |
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            alpine sh -c 'find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true'
       - name: Fail on known vulns in the deployed image
         id: audit
         run: |

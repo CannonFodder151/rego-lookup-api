@@ -88,6 +88,44 @@ class SecurityScanWorkflowTest(unittest.TestCase):
             with self.subTest(job=job):
                 self.assertIn(job, self.wf["jobs"])
 
+    def test_workflow_lint_runs_in_docker_with_no_bytecode(self):
+        # AUT-6315: workflow-lint runs inside the pinned base image because the
+        # self-hosted runner lacks ensurepip. AUT-6319: PYTHONDONTWRITEBYTECODE=1
+        # prevents root-owned __pycache__ in the mounted workspace, which breaks
+        # subsequent job checkouts.
+        lint = self.wf["jobs"]["workflow-lint"]
+        script = "\n".join(s.get("run", "") for s in lint["steps"])
+        self.assertIn("docker run", script, "workflow-lint must run inside the pinned image")
+        self.assertIn("$PYTHON_BASE_IMAGE", script)
+        self.assertIn("PYTHONDONTWRITEBYTECODE=1", script, "must set PYTHONDONTWRITEBYTECODE=1 to avoid root-owned __pycache__")
+        self.assertIn("__pycache__", script, "must clean up any __pycache__ created by the docker run")
+
+    def test_pre_checkout_pycache_cleanup_in_all_self_hosted_jobs(self):
+        # AUT-6319: root-owned __pycache__ from prior docker runs block
+        # actions/checkout@v4 git clean. Every self-hosted job WITH a checkout
+        # step must clean __pycache__ before checkout.
+        for job_name, job in self.wf["jobs"].items():
+            runs_on = job.get("runs-on", [])
+            if isinstance(runs_on, str):
+                runs_on = [runs_on]
+            if "self-hosted" not in runs_on:
+                continue
+            with self.subTest(job=job_name):
+                steps = job["steps"]
+                checkout_idx = next(
+                    (i for i, s in enumerate(steps) if s.get("uses", "").startswith("actions/checkout")),
+                    None,
+                )
+                if checkout_idx is None:
+                    # Jobs without checkout (e.g. audit) don't need this guard
+                    continue
+                pre_checkout = steps[:checkout_idx]
+                found = any(
+                    "__pycache__" in s.get("run", "") and "docker run" in s.get("run", "")
+                    for s in pre_checkout
+                )
+                self.assertTrue(found, f"{job_name} must clean __pycache__ via docker run before checkout")
+
     def test_jobs_are_not_shadowed(self):
         # A duplicate `jobs:` silently discards the first block; make sure the
         # PR-time pip-audit gate is actually the one that survives.
@@ -158,13 +196,12 @@ class SecurityScanWorkflowTest(unittest.TestCase):
         audit_idx = next(i for i, l in enumerate(lines) if l.strip() == "pip-audit")
         self.assertLess(install_idx, audit_idx, "install pip-audit before invoking it")
 
-    def test_pip_audit_runs_off_the_memory_constrained_self_hosted_vm(self):
-        # First live run of the repaired gate: building the resolved tree inside
-        # the container OOM-killed the self-hosted rego VM (exit 137, "Killed"),
-        # which reads exactly like a CVE failure. The audit is memory-hungry and
-        # gains nothing from an arch-specific self-hosted runner.
+    def test_pip_audit_runs_on_self_hosted(self):
+        # AUT-5962 (2026-10-07): moved back to self-hosted because GitHub-hosted
+        # ubuntu-latest runners were not scheduling jobs (0 steps, immediate failure).
+        # The OOM that motivated the original move to ubuntu-latest was transient.
         runs_on = self.wf["jobs"]["pip-audit-pr"]["runs-on"]
-        self.assertEqual(runs_on, "ubuntu-latest", f"pip-audit-pr must not self-host: {runs_on}")
+        self.assertEqual(runs_on, ["self-hosted", "linux", "x64"])
 
 
 class CveFloorPinTest(unittest.TestCase):
