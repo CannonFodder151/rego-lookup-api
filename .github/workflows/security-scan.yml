@@ -123,12 +123,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           clean: false
-      - name: Run workflow lint tests (AUT-4776)
+      - name: Run workflow lint tests in docker (AUT-4776)
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet pyyaml
-          python3 tests/test_workflow_lint.py
-          python3 tests/test_security_scan_workflow.py
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            "$PYTHON_BASE_IMAGE" sh -c '
+              set -eu
+              python3 -m venv /tmp/venv
+              . /tmp/venv/bin/activate
+              pip install --quiet --upgrade pip
+              pip install --quiet pyyaml
+              python3 tests/test_workflow_lint.py
+              python3 tests/test_security_scan_workflow.py
+            '
 
   image-scan:
     # AUT-5962: ubuntu-latest jobs were not scheduling (0 steps). Use self-hosted.
