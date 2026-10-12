@@ -51,7 +51,7 @@ env:
 jobs:
   pip-audit-pr:
     if: github.event_name == 'pull_request'
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     steps:
       - name: Clean workspace via docker (root)
         run: |
