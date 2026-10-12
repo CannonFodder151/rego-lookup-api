@@ -51,9 +51,14 @@ env:
 jobs:
   pip-audit-pr:
     if: github.event_name == 'pull_request'
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     steps:
+      - name: Clean workspace via docker (root)
+        run: |
+          docker run --rm -v "$PWD":/workspace -w /workspace alpine:3.20 sh -c 'rm -rf /workspace/* /workspace/.[^.]* 2>/dev/null || true'
       - uses: actions/checkout@v4
+        with:
+          clean: false
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
         run: |
           set -euo pipefail
@@ -73,20 +78,35 @@ jobs:
     name: Workflow lint — no duplicate mapping keys (AUT-4776)
     runs-on: [self-hosted, linux, x64]
     steps:
+      - name: Clean workspace via docker (root)
+        run: |
+          docker run --rm -v "$PWD":/workspace -w /workspace alpine:3.20 sh -c 'rm -rf /workspace/* /workspace/.[^.]* 2>/dev/null || true'
       - uses: actions/checkout@v4
-      - name: Install pip via ensurepip
-        run: python3 -m ensurepip --upgrade
-      - name: Strict-parse every workflow + assert the gate's own invariants
+        with:
+          clean: false
+      - name: Run workflow lint tests in docker (AUT-4776)
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet pyyaml
-          python3 tests/test_workflow_lint.py
-          python3 tests/test_security_scan_workflow.py
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            "$PYTHON_BASE_IMAGE" sh -c '
+              set -eu
+              python3 -m venv /tmp/venv
+              . /tmp/venv/bin/activate
+              pip install --quiet --upgrade pip
+              pip install --quiet pyyaml
+              python3 tests/test_workflow_lint.py
+              python3 tests/test_security_scan_workflow.py
+            '
 
   image-scan:
     runs-on: [self-hosted, linux, x64]
     steps:
+      - name: Clean workspace via docker (root)
+        run: |
+          docker run --rm -v "$PWD":/workspace -w /workspace alpine:3.20 sh -c 'rm -rf /workspace/* /workspace/.[^.]* 2>/dev/null || true'
       - uses: actions/checkout@v4
+        with:
+          clean: false
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
         run: |
           set -euo pipefail
@@ -119,7 +139,7 @@ jobs:
           fi
           curl -s -X POST https://n8n.nathanmartina.com/webhook/discord-report \
             -H "Content-Type: application/json" \
-            -d "{\"channel\":\"status\",\"title\":\"$TITLE\",\"description\":\"trivy scan of digest-pinned python:3.13-slim base image (rego-lookup-api).\",\"color\":\"$COLOR\",\"author\":\"Security Scan\",\"fields\":[{\"name\":\"Image\",\"value\":\"python:3.13-slim\",\"inline\":true},{\"name\":\"Run\",\"value\":\"$RUN_URL\",\"inline\":true}]}'
+            -d "{\"channel\":\"status\",\"title\":\"$TITLE\",\"description\":\"trivy scan of digest-pinned python:3.13-slim base image (rego-lookup-api).\",\"color\":\"$COLOR\",\"author\":\"Security Scan\",\"fields\":[{\"name\":\"Image\",\"value\":\"python:3.13-slim\",\"inline\":true},{\"name\":\"Run\",\"value\":\"$RUN_URL\",\"inline\":true}]}"
 
   audit:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
