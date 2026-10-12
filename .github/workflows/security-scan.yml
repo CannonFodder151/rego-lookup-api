@@ -74,6 +74,10 @@ jobs:
     # runners were not scheduling jobs (0 steps, immediate failure).
     runs-on: [self-hosted, linux, x64]
     steps:
+      - name: Clean root-owned __pycache__ from prior runs
+        run: |
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            alpine sh -c 'find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true'
       - uses: actions/checkout@v4
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
         run: |
@@ -108,6 +112,10 @@ jobs:
     name: Workflow lint — no duplicate mapping keys (AUT-4776)
     runs-on: [self-hosted, linux, x64]
     steps:
+      - name: Clean root-owned __pycache__ from prior runs
+        run: |
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            alpine sh -c 'find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true'
       - uses: actions/checkout@v4
       - name: Strict-parse every workflow + assert the gate's own invariants
         run: |
@@ -132,6 +140,10 @@ jobs:
   image-scan:
     runs-on: [self-hosted, linux, x64]
     steps:
+      - name: Clean root-owned __pycache__ from prior runs
+        run: |
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            alpine sh -c 'find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true'
       - uses: actions/checkout@v4
 
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
@@ -182,6 +194,10 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, linux, x64]
     steps:
+      - name: Clean root-owned __pycache__ from prior runs
+        run: |
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            alpine sh -c 'find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true'
       - name: Fail on known vulns in the deployed image
         id: audit
         run: |
@@ -202,5 +218,5 @@ jobs:
         run: |
           curl -s -X POST https://n8n.nathanmartina.com/webhook/discord-report \
             -H "Content-Type: application/json" \
-            -d "$(jq -nc --arg c status --arg t "$TITLE" --arg col "$COLOR" --arg u "$RUN_URL" \
+            -d "$(jq -nc --arg c status --arg t \"$TITLE\" --arg col \"$COLOR\" --arg u \"$RUN_URL\" \
               '{channel:$c,title:$t,description:"Weekly full-resolution pip-audit of rego-lookup-api requirements.",color:$col,author:"Security Scan",fields:[{name:"Scan",value:"full-resolution (transitive)",inline:true},{name:"Repo",value:"rego-lookup-api",inline:true},{name:"Run",value:$u,inline:true}]}')"
