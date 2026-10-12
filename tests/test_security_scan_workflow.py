@@ -100,6 +100,30 @@ class SecurityScanWorkflowTest(unittest.TestCase):
         self.assertIn("PYTHONDONTWRITEBYTECODE=1", script, "must set PYTHONDONTWRITEBYTECODE=1 to avoid root-owned __pycache__")
         self.assertIn("__pycache__", script, "must clean up any __pycache__ created by the docker run")
 
+    def test_pre_checkout_pycache_cleanup_in_all_self_hosted_jobs(self):
+        # AUT-6319: root-owned __pycache__ from prior docker runs block
+        # actions/checkout@v4 git clean. Every self-hosted job must clean
+        # __pycache__ before checkout.
+        for job_name, job in self.wf["jobs"].items():
+            runs_on = job.get("runs-on", [])
+            if isinstance(runs_on, str):
+                runs_on = [runs_on]
+            if "self-hosted" not in runs_on:
+                continue
+            with self.subTest(job=job_name):
+                steps = job["steps"]
+                checkout_idx = next(
+                    (i for i, s in enumerate(steps) if s.get("uses", "").startswith("actions/checkout")),
+                    None,
+                )
+                self.assertIsNotNone(checkout_idx, f"{job_name} must have a checkout step")
+                pre_checkout = steps[:checkout_idx]
+                found = any(
+                    "__pycache__" in s.get("run", "") and "docker run" in s.get("run", "")
+                    for s in pre_checkout
+                )
+                self.assertTrue(found, f"{job_name} must clean __pycache__ via docker run before checkout")
+
     def test_jobs_are_not_shadowed(self):
         # A duplicate `jobs:` silently discards the first block; make sure the
         # PR-time pip-audit gate is actually the one that survives.
