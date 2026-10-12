@@ -78,9 +78,12 @@ jobs:
     # (0 steps, immediate failure). Use self-hosted runner which has capacity.
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Clean stale __pycache__ directories
-        run: find . -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
+      - name: Clean workspace via docker (root)
+        run: |
+          docker run --rm -v "$PWD":/workspace -w /workspace alpine:3.20 sh -c 'rm -rf /workspace/* /workspace/.[^.]* 2>/dev/null || true'
       - uses: actions/checkout@v4
+        with:
+          clean: false
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
         run: |
           set -euo pipefail
@@ -114,9 +117,12 @@ jobs:
     name: Workflow lint — no duplicate mapping keys (AUT-4776)
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Clean stale __pycache__ directories
-        run: find . -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
+      - name: Clean workspace via docker (root)
+        run: |
+          docker run --rm -v "$PWD":/workspace -w /workspace alpine:3.20 sh -c 'rm -rf /workspace/* /workspace/.[^.]* 2>/dev/null || true'
       - uses: actions/checkout@v4
+        with:
+          clean: false
       - name: Run workflow lint tests (AUT-4776)
         run: |
           set -euo pipefail
@@ -128,9 +134,12 @@ jobs:
     # AUT-5962: ubuntu-latest jobs were not scheduling (0 steps). Use self-hosted.
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Clean stale __pycache__ directories
-        run: find . -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
+      - name: Clean workspace via docker (root)
+        run: |
+          docker run --rm -v "$PWD":/workspace -w /workspace alpine:3.20 sh -c 'rm -rf /workspace/* /workspace/.[^.]* 2>/dev/null || true'
       - uses: actions/checkout@v4
+        with:
+          clean: false
 
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
         run: |
