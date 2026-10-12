@@ -109,16 +109,20 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
-      - name: Create venv and install pyyaml (avoids externally-managed-environment)
-        run: |
-          set -euo pipefail
-          python3 -m venv /tmp/lint-venv
-          /tmp/lint-venv/bin/pip install --quiet pyyaml
       - name: Strict-parse every workflow + assert the gate's own invariants
         run: |
           set -euo pipefail
-          /tmp/lint-venv/bin/python tests/test_workflow_lint.py
-          /tmp/lint-venv/bin/python tests/test_security_scan_workflow.py
+          # AUT-6315: run inside the pinned base image — the self-hosted
+          # runner's system python has no ensurepip and no passwordless sudo,
+          # so pip cannot be installed on the host. The image has pip.
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
+            "$PYTHON_BASE_IMAGE" sh -c '
+              set -eu
+              pip install --quiet pyyaml
+              python tests/test_workflow_lint.py
+              python tests/test_security_scan_workflow.py
+            '
 
   image-scan:
     runs-on: [self-hosted, linux, x64]
