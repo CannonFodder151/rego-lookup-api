@@ -60,7 +60,11 @@ env:
   # pip-audit HIGH/CRITICALs found in the deployed :hosted image (openssl,
   # pcre2, urllib3 clusters). The new digest carries deb13u2+ fixes for the
   # previously flagged packages.
-  PYTHON_BASE_IMAGE: 'python:3.13-slim@sha256:bf44cdfcb76cd3b41e879bc058fc37ec5872002ccfde7fcb765e218cde0cd79c'
+  #
+  # AUT-6283: bumped to 2026-10-09 index digest (sha256:70729b46...) to clear
+  # pip-audit HIGH/CRITICALs found in the deployed :hosted image (base image
+  # security updates).
+  PYTHON_BASE_IMAGE: 'python:3.13-slim@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f'
 
 jobs:
   # PR-time gate for the *resolved* python dependency tree. Mirrors the
@@ -72,7 +76,7 @@ jobs:
     if: github.event_name == 'pull_request'
     # AUT-5962: switched to self-hosted runner. GitHub-hosted ubuntu-latest
     # runners were not scheduling jobs (0 steps, immediate failure).
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     steps:
       - name: Clean stale __pycache__ directories
         run: find . -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
