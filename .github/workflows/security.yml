@@ -81,13 +81,12 @@ jobs:
       - name: Strict-parse every workflow + assert the gate's own invariants
         run: |
           set -euo pipefail
-          docker run --rm -v "$PWD:/ws" -w /ws \
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/ws" -w /ws \
             -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
+            -e PYTHONUSERBASE=/tmp/pip-user \
             "$PYTHON_BASE_IMAGE" sh -c '
               set -eu
-              python3 -m venv /tmp/venv
-              . /tmp/venv/bin/activate
-              pip install --quiet pyyaml
+              pip install --user --quiet pyyaml
               python3 tests/test_workflow_lint.py
               python3 tests/test_security_scan_workflow.py
             '

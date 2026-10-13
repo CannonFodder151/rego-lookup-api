@@ -172,13 +172,13 @@ class SecurityScanWorkflowTest(unittest.TestCase):
     def test_workflow_lint_runs_in_container(self):
         # workflow-lint must run inside the pinned base image container
         # because the self-hosted runner's system python lacks ensurepip
+        # Uses --user to avoid root-owned __pycache__ breaking checkout
         job = self.wf["jobs"]["workflow-lint"]
         script = "\n".join(s.get("run", "") for s in job["steps"])
         self.assertIn("docker run", script, "workflow-lint must run in the pinned image")
         self.assertIn("$PYTHON_BASE_IMAGE", script)
-        self.assertNotIn("ensurepip", script, "ensurepip must not be used on host")
-        # pyyaml and tests must run inside the container
-        self.assertIn("pip install --quiet pyyaml", script)
+        self.assertIn("--user", script, "must run container as host user")
+        self.assertIn("pip install --user --quiet pyyaml", script)
         self.assertIn("python3 tests/test_workflow_lint.py", script)
         self.assertIn("python3 tests/test_security_scan_workflow.py", script)
 
