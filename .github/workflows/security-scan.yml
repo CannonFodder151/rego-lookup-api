@@ -109,12 +109,17 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
-      - name: Install pip via ensurepip
-        run: python3 -m ensurepip --upgrade
+      - name: Install python3-venv and create venv for pyyaml
+        run: |
+          set -euo pipefail
+          apt-get update && apt-get install -y python3-venv
+          python3 -m venv .venv
+          . .venv/bin/activate
+          pip install --quiet pyyaml
       - name: Strict-parse every workflow + assert the gate's own invariants
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet pyyaml
+          . .venv/bin/activate
           python3 tests/test_workflow_lint.py
           python3 tests/test_security_scan_workflow.py
 
