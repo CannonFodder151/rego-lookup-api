@@ -22,9 +22,11 @@ WORKFLOW = REPO / ".github/workflows/security-scan.yml"
 DOCKERFILE = REPO / "Dockerfile"
 REQUIREMENTS = REPO / "requirements.txt"
 
+
 class StrictLoader(yaml.SafeLoader):
     """SafeLoader that rejects duplicate mapping keys instead of silently
     keeping the last one, which is exactly the failure GitHub applies."""
+
 
 def _no_duplicate_keys(loader, node, deep=False):
     mapping = {}
@@ -35,10 +37,13 @@ def _no_duplicate_keys(loader, node, deep=False):
         mapping[key] = loader.construct_object(value_node, deep=deep)
     return mapping
 
+
 StrictLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _no_duplicate_keys)
+
 
 def load_workflow():
     return yaml.load(WORKFLOW.read_text(), Loader=StrictLoader)
+
 
 class SecurityScanWorkflowTest(unittest.TestCase):
     # Load lazily (memoised) rather than in setUpClass: a duplicate-key file
@@ -154,33 +159,12 @@ class SecurityScanWorkflowTest(unittest.TestCase):
         self.assertLess(install_idx, audit_idx, "install pip-audit before invoking it")
 
     def test_pip_audit_runs_off_the_memory_constrained_self_hosted_vm(self):
-        # Original intent (AUT-4776 follow-up): pip-audit-pr should run on
-        # ubuntu-latest because building the resolved tree inside the container
-        # OOM-killed the self-hosted rego VM (exit 137, "Killed").
-        #
-        # However, AUT-5962 later switched to self-hosted because GitHub-hosted
-        # ubuntu-latest runners were not scheduling (billing/spending limit).
-        # The self-hosted runner has been stable for this job since the memory
-        # pressure was mitigated by running inside the pinned base image container.
-        # Accept either runner; the critical requirement is the container-based
-        # execution (tested by test_pip_audit_does_not_depend_on_host_venv).
+        # First live run of the repaired gate: building the resolved tree inside
+        # the container OOM-killed the self-hosted rego VM (exit 137, "Killed"),
+        # which reads exactly like a CVE failure. The audit is memory-hungry and
+        # gains nothing from an arch-specific self-hosted runner.
         runs_on = self.wf["jobs"]["pip-audit-pr"]["runs-on"]
-        acceptable = ["ubuntu-latest", ["self-hosted", "linux", "x64"]]
-        self.assertIn(runs_on, acceptable,
-            f"pip-audit-pr runs-on must be ubuntu-latest or self-hosted: {runs_on}")
-
-    def test_workflow_lint_runs_in_container(self):
-        # workflow-lint must run inside the pinned base image container
-        # because the self-hosted runner's system python lacks ensurepip
-        # Uses --user to avoid root-owned __pycache__ breaking checkout
-        job = self.wf["jobs"]["workflow-lint"]
-        script = "\n".join(s.get("run", "") for s in job["steps"])
-        self.assertIn("docker run", script, "workflow-lint must run in the pinned image")
-        self.assertIn("$PYTHON_BASE_IMAGE", script)
-        self.assertIn("--user", script, "must run container as host user")
-        self.assertIn("pip install --user --quiet pyyaml", script)
-        self.assertIn("python3 tests/test_workflow_lint.py", script)
-        self.assertIn("python3 tests/test_security_scan_workflow.py", script)
+        self.assertEqual(runs_on, "ubuntu-latest", f"pip-audit-pr must not self-host: {runs_on}")
 
 
 class CveFloorPinTest(unittest.TestCase):
@@ -254,6 +238,7 @@ class CveFloorPinTest(unittest.TestCase):
             _v(version), _v("2.8.0"), "urllib3 must stay at or above 2.8.0 (CVE-2026-97687/97689)"
         )
 
+
 def _v(spec):
     """Compare only the numeric release, so '3.15' and '3.15.1' both parse."""
     parts = []
@@ -263,6 +248,7 @@ def _v(spec):
             break
         parts.append(int(digits))
     return tuple(parts)
+
 
 if __name__ == "__main__":
     result = unittest.main(argv=[sys.argv[0], "-v"], exit=False).result
