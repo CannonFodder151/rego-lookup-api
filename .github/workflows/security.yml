@@ -81,8 +81,8 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf tests/__pycache__ 2>/dev/null || true
-          rm -rf .git 2>/dev/null || true
-          git clone --depth 1 --branch ${{ github.head_ref }} https://github.com/${{ github.repository }} .
+          find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} + 2>/dev/null || true
+          git fetch --depth 1 origin ${{ github.head_ref }} && git reset --hard FETCH_HEAD
       - name: Strict-parse every workflow + assert the gate's own invariants
         run: |
           set -euo pipefail
@@ -103,8 +103,8 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf tests/__pycache__ 2>/dev/null || true
-          rm -rf .git 2>/dev/null || true
-          git clone --depth 1 --branch ${{ github.head_ref }} https://github.com/${{ github.repository }} .
+          find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} + 2>/dev/null || true
+          git fetch --depth 1 origin ${{ github.head_ref }} && git reset --hard FETCH_HEAD
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
         run: |
           set -euo pipefail
