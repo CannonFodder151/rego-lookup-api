@@ -85,6 +85,8 @@ jobs:
             -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
             "$PYTHON_BASE_IMAGE" sh -c '
               set -eu
+              python3 -m venv /tmp/venv
+              . /tmp/venv/bin/activate
               pip install --quiet pyyaml
               python3 tests/test_workflow_lint.py
               python3 tests/test_security_scan_workflow.py

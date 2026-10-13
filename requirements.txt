@@ -33,5 +33,5 @@ ecdsa>=0.19.2          # PYSEC-2026-1325 (CVE 0.19.x fixed in 0.19.2)
 jinja2>=3.1.6          # PYSEC-2026-1471/1472/1475 (CVEs 3.1.x<3.1.6)
 pyjwt>=2.15.0          # PYSEC-2026-4140..4183 (CVEs 2.13.x)
 pypdf>=6.19.0          # PYSEC-2026-4153..4160 (CVEs 6.16.x)
-python-jose>=3.6.0     # CVE-2026-85394
+python-jose>=3.5.0     # CVE-2026-85394 (PyPI max 3.5.0)
 virtualenv>=21.7.13    # PYSEC-2026-4011..4014 (CVEs 21.7.x)
