@@ -1,0 +1,4 @@
+# AUT-6458: pip-audit allowlist for known CVEs with no patched release yet.
+# Each entry documents the CVE, why it's accepted, and the tracking issue.
+ignore-vuln:
+  GHSA-wj6h-64fc-37mp: "AUT-6458: ecdsa Minerva timing attack on P-256. All released versions (0.6-0.19.2) affected. No patched release exists; 0.20.0 announced but not published. Transitive dep of python-jose. Tracking: AUT-6459."
