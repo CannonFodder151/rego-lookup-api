@@ -29,7 +29,12 @@ urllib3>=2.8.0        # CVE-2026-97687 + CVE-2026-97689 (CVEs 1.26.0-2.7.x)
 
 # AUT-6313: transitive floor pins for known-CVE packages found in the
 # deployed :hosted image by the weekly pip-audit scan.
-ecdsa>=0.20.0          # PYSEC-2026-1325 (CVE 0.19.x)
+# AUT-6458: ecdsa is a transitive dep of python-jose. All released versions
+# (0.6 through 0.19.2) carry CVE PYSEC-2026-1325 / GHSA-wj6h-64fc-37mp
+# (Minerva timing attack on P-256). No patched release exists yet; 0.20.0
+# is announced but not published. Floor pin removed because >=0.20.0 is
+# unsatisfiable and pip falls back to 0.19.2. Allowlisted in .pip-audit.yml
+# with justification. Tracking: AUT-6459 (upgrade when 0.20.0 ships).
 jinja2>=3.1.6          # PYSEC-2026-1471/1472/1475 (CVEs 3.1.x<3.1.6)
 pyjwt>=2.15.0          # PYSEC-2026-4140..4183 (CVEs 2.13.x)
 pypdf>=6.19.0          # PYSEC-2026-4153..4160 (CVEs 6.16.x)
