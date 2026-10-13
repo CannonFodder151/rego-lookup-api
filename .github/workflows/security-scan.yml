@@ -44,46 +44,19 @@ permissions:
   contents: read
 
 env:
-  # Must track the digest in Dockerfile. AUT-1877 (#39, 2026-09-05) re-pinned
-  # the base to the multi-arch index digest; this copy drifted and the scan was
-  # auditing an image rego-lookup-api no longer ships (AUT-4776).
-  #
-  # AUT-4780: the first live scan of the repaired gate found 19 HIGH/CRITICAL
-  # (3 CRITICAL) in the old digest — perl, libpcre2, libsqlite3, gzip, openssl
-  # all behind a Debian point release. Bumped to the current index digest,
-  # which carries perl 5.40.1-6+deb13u1, libpcre2 10.46-1~deb13u2,
-  # libsqlite3 3.46.1-7+deb13u2 and gzip 1.13-1+deb13u1. Same multi-arch index
-  # (amd64/arm64/386/arm/ppc64le/riscv64/s390x), so the AUT-2224 native per-arch
-  # build is unaffected.
-  #
-  # AUT-6089: bumped to 2026-10-06 index digest (sha256:bf44cdfc...) to clear
-  # pip-audit HIGH/CRITICALs found in the deployed :hosted image (openssl,
-  # pcre2, urllib3 clusters). The new digest carries deb13u2+ fixes for the
-  # previously flagged packages.
+  # AUT-6089: bumped to 2026-10-06 index digest to clear pip-audit
+  # HIGH/CRITICALs in deployed :hosted image.
   PYTHON_BASE_IMAGE: 'python:3.13-slim@sha256:bf44cdfcb76cd3b41e879bc058fc37ec5872002ccfde7fcb765e218cde0cd79c'
 
 jobs:
-  # PR-time gate for the *resolved* python dependency tree. Mirrors the
-  # autobrain `pip-audit-resolved` job (AUT-1189): installs into a
-  # throwaway venv and audits with pip-audit (no --no-deps), so transitive
-  # CVE drift in transitively-resolved packages (idna / pygments / etc.)
-  # is caught on every PR instead of only on the weekly schedule below.
   pip-audit-pr:
     if: github.event_name == 'pull_request'
-    # AUT-5962: switched to self-hosted runner. GitHub-hosted ubuntu-latest
-    # runners were not scheduling jobs (0 steps, immediate failure).
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
         run: |
           set -euo pipefail
-          # Run inside the digest-pinned base image rather than a host venv:
-          # the self-hosted runner's system python has no ensurepip
-          # (python3-venv missing), so `python3 -m venv` always failed and the
-          # gate reported a false negative instead of a result (AUT-4776).
-          # The image is exactly what rego-lookup-api ships, so the resolved
-          # tree matches production.
           docker run --rm -v "$PWD:/ws" -w /ws \
             -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
             "$PYTHON_BASE_IMAGE" sh -c '
@@ -93,17 +66,9 @@ jobs:
               pip install --quiet --upgrade pip
               pip install --quiet pip-audit
               pip install --quiet -r requirements.txt
-              # `set -eu` propagates the non-zero exit when pip-audit finds a
-              # CVE. The previous explicit rc-capture block was unreachable:
-              # `set -e` had already aborted the script before `rc=$?` ran, so
-              # the "::error::" annotation never fired (AUT-4776).
               pip-audit
             '
 
-  # AUT-4776 follow-up: the regression tests that guard this file shipped in
-  # #56 but nothing executed them, so a future duplicate-key edit would again
-  # kill the gate with nothing failing. GitHub-hosted: needs no rego runner
-  # and no self-hosted capacity.
   workflow-lint:
     name: Workflow lint — no duplicate mapping keys (AUT-4776)
     runs-on: [self-hosted, linux, x64]
@@ -122,13 +87,9 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
-
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
         run: |
           set -euo pipefail
-          # Anchor on `FROM` and allow the `--platform=` prefix the Dockerfile
-          # actually uses. The old `FROM python:[0-9]` pattern matched nothing,
-          # so the guard passed vacuously and enforced nothing (AUT-4776).
           FLOATING="$(grep -nE '^FROM .*python:[0-9]' Dockerfile | grep -v '@sha256' || true)"
           if [ -n "$FLOATING" ]; then
             echo "::error::floating python base image detected (missing @sha256 digest):"
@@ -136,20 +97,16 @@ jobs:
             exit 1
           fi
           echo "OK: python base image is digest-pinned in Dockerfile."
-
       - name: Scan pinned python base image (HIGH/CRITICAL, AUT-1735)
         run: |
           set -euo pipefail
           docker pull aquasec/trivy@sha256:ee940acbf1f58ebadb42d01434ce4609530bf1b52536afbd1eee66cd7123c5c9
-          # .trivyignore is checked out into the workspace; mount it so trivy
-          # reads the reviewed residual-CVE accepts (no inline fallback needed).
           docker run --rm -v "$PWD:/ws" -w /ws \
             aquasec/trivy@sha256:ee940acbf1f58ebadb42d01434ce4609530bf1b52536afbd1eee66cd7123c5c9 image \
             --severity HIGH,CRITICAL \
             --ignore-unfixed \
             --exit-code 1 \
             "$PYTHON_BASE_IMAGE" | tee trivy-python-report.txt
-
       - name: Report to Discord #status
         if: always()
         env:
@@ -165,9 +122,6 @@ jobs:
             -d "{\"channel\":\"status\",\"title\":\"$TITLE\",\"description\":\"trivy scan of digest-pinned python:3.13-slim base image (rego-lookup-api).\",\"color\":\"$COLOR\",\"author\":\"Security Scan\",\"fields\":[{\"name\":\"Image\",\"value\":\"python:3.13-slim\",\"inline\":true},{\"name\":\"Run\",\"value\":\"$RUN_URL\",\"inline\":true}]}"
 
   audit:
-    # Full-resolution pip-audit of the *deployed* image. Runs only on
-    # schedule/workflow_dispatch (the `:hosted` tag is published by auto-deploy),
-    # so it never races a `push` build and is skipped on pull_request.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, linux, x64]
     steps:
@@ -180,7 +134,6 @@ jobs:
             sh -c "pip install --quiet pip-audit && pip-audit" \
             || { echo "result=found" >> "$GITHUB_OUTPUT"; exit 1; }
           echo "result=clean" >> "$GITHUB_OUTPUT"
-
       - name: Report to Discord #status
         if: always()
         env:
@@ -191,5 +144,4 @@ jobs:
         run: |
           curl -s -X POST https://n8n.nathanmartina.com/webhook/discord-report \
             -H "Content-Type: application/json" \
-            -d "$(jq -nc --arg c status --arg t "$TITLE" --arg col "$COLOR" --arg u "$RUN_URL" \
-              '{channel:$c,title:$t,description:"Weekly full-resolution pip-audit of rego-lookup-api requirements.",color:$col,author:"Security Scan",fields:[{name:"Scan",value:"full-resolution (transitive)",inline:true},{name:"Repo",value:"rego-lookup-api",inline:true},{name:"Run",value:$u,inline:true}]}')"
+            -d "$(jq -nc --arg c status --arg t \"$TITLE\" --arg col \"$COLOR\" --arg u \"$RUN_URL\" '{channel:$c,title:$t,description:"Weekly full-resolution pip-audit of rego-lookup-api requirements.",color:$col,author:"Security Scan",fields:[{name:"Scan",value:"full-resolution (transitive)",inline:true},{name:"Repo",value:"rego-lookup-api",inline:true},{name:"Run",value:$u,inline:true}]}')"

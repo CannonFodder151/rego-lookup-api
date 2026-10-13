@@ -51,7 +51,7 @@ env:
 jobs:
   pip-audit-pr:
     if: github.event_name == 'pull_request'
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
@@ -119,7 +119,7 @@ jobs:
           fi
           curl -s -X POST https://n8n.nathanmartina.com/webhook/discord-report \
             -H "Content-Type: application/json" \
-            -d "{\"channel\":\"status\",\"title\":\"$TITLE\",\"description\":\"trivy scan of digest-pinned python:3.13-slim base image (rego-lookup-api).\",\"color\":\"$COLOR\",\"author\":\"Security Scan\",\"fields\":[{\"name\":\"Image\",\"value\":\"python:3.13-slim\",\"inline\":true},{\"name\":\"Run\",\"value\":\"$RUN_URL\",\"inline\":true}]}'
+            -d "{\"channel\":\"status\",\"title\":\"$TITLE\",\"description\":\"trivy scan of digest-pinned python:3.13-slim base image (rego-lookup-api).\",\"color\":\"$COLOR\",\"author\":\"Security Scan\",\"fields\":[{\"name\":\"Image\",\"value\":\"python:3.13-slim\",\"inline\":true},{\"name\":\"Run\",\"value\":\"$RUN_URL\",\"inline\":true}]}"
 
   audit:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
