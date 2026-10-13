@@ -57,10 +57,11 @@ jobs:
     # base image mitigates the memory pressure that caused OOM kills (AUT-4776).
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Clean workspace + checkout
+      - name: Clean workspace (docker root) + checkout
         run: |
           set -euo pipefail
-          rm -rf tests/__pycache__ .git * .[^.]* 2>/dev/null || true
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            "$PYTHON_BASE_IMAGE" sh -c 'rm -rf /ws/tests/__pycache__ /ws/.git /ws/* /ws/.[^.]* 2>/dev/null || true'
           git clone --depth 1 --branch ${{ github.head_ref }} https://github.com/${{ github.repository }} .
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
         run: |
@@ -81,10 +82,11 @@ jobs:
     name: Workflow lint — no duplicate mapping keys (AUT-4776)
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Clean workspace + checkout
+      - name: Clean workspace (docker root) + checkout
         run: |
           set -euo pipefail
-          rm -rf tests/__pycache__ .git * .[^.]* 2>/dev/null || true
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            "$PYTHON_BASE_IMAGE" sh -c 'rm -rf /ws/tests/__pycache__ /ws/.git /ws/* /ws/.[^.]* 2>/dev/null || true'
           git clone --depth 1 --branch ${{ github.head_ref }} https://github.com/${{ github.repository }} .
       - name: Strict-parse every workflow + assert the gate's own invariants
         run: |
@@ -102,10 +104,11 @@ jobs:
   image-scan:
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Clean workspace + checkout
+      - name: Clean workspace (docker root) + checkout
         run: |
           set -euo pipefail
-          rm -rf tests/__pycache__ .git * .[^.]* 2>/dev/null || true
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            "$PYTHON_BASE_IMAGE" sh -c 'rm -rf /ws/tests/__pycache__ /ws/.git /ws/* /ws/.[^.]* 2>/dev/null || true'
           git clone --depth 1 --branch ${{ github.head_ref }} https://github.com/${{ github.repository }} .
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
         run: |
