@@ -70,7 +70,7 @@ jobs:
               pip install --quiet --upgrade pip
               pip install --quiet pip-audit
               pip install --quiet -r requirements.txt
-              pip-audit
+              pip-audit || (echo "pip-audit exit code: $?" && exit 1)
             '
 
   workflow-lint:
