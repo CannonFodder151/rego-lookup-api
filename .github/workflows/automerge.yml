@@ -10,6 +10,9 @@ name: automerge
 # runs the workflow file from the PR head, so this is the same trust
 # consideration as the website repo's equivalent job, where Security review is
 # recorded on AUT-5654.
+#
+# AUT-6457: replaced gh CLI with curl REST calls — gh is not installed on the
+# self-hosted runner, causing exit code 127 (command not found).
 on:
   pull_request_review:
     types: [submitted]
@@ -47,14 +50,13 @@ jobs:
           PR=""
           case "$EVENT_NAME" in
             issue_comment)
-              # approval markers are PR comments; plain issue comments are ignored
               if [ -n "$EVENT_COMMENT_ON_PR" ]; then PR="${{ github.event.issue.number }}"; fi
               ;;
             pull_request_review|pull_request)
               PR="$EVENT_PULL_REQUEST"
               ;;
             *)
-              PR="$(gh api "repos/$REPO/commits/$EVENT_SHA/pulls" --jq '.[0].number // empty' || true)"
+              PR="$(curl -sf -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/commits/$EVENT_SHA/pulls" | jq -r '.[0].number // empty' || true)"
               ;;
           esac
           echo "pr=$PR" >> "$GITHUB_OUTPUT"
@@ -67,8 +69,12 @@ jobs:
           set -uo pipefail
           REPO="${{ github.repository }}"
           PR="${{ steps.pr.outputs.pr }}"
-          DEFAULT="$(gh api "repos/$REPO" --jq '.default_branch')"
-          DATA="$(gh api "repos/$REPO/pulls/$PR")"
+          API="https://api.github.com/repos/$REPO"
+          AUTH="Authorization: Bearer $GITHUB_TOKEN"
+          ACCEPT="Accept: application/vnd.github+json"
+
+          DEFAULT="$(curl -sf -H "$AUTH" -H "$ACCEPT" "$API" | jq -r '.default_branch')"
+          DATA="$(curl -sf -H "$AUTH" -H "$ACCEPT" "$API/pulls/$PR")"
 
           BASE="$(echo "$DATA" | jq -r '.base.ref')"
           if [ "$BASE" != "$DEFAULT" ]; then echo "skip: base '$BASE' is not '$DEFAULT'"; exit 0; fi
@@ -77,7 +83,8 @@ jobs:
           if [ "$STATE" != "clean" ]; then echo "skip: mergeable_state=$STATE"; exit 0; fi
 
           HEAD_SHA="$(echo "$DATA" | jq -r '.head.sha')"
-          CMP="$(gh api "repos/$REPO/compare/$DEFAULT...$HEAD_SHA" --jq '[.status, .ahead_by, .behind_by]')"
+          HEAD_REF="$(echo "$DATA" | jq -r '.head.ref')"
+          CMP="$(curl -sf -H "$AUTH" -H "$ACCEPT" "$API/compare/$DEFAULT...$HEAD_SHA" | jq -c '[.status, .ahead_by, .behind_by]')"
           C_STATUS="$(echo "$CMP" | jq -r '.[0]')"
           C_AHEAD="$(echo "$CMP" | jq -r '.[1]')"
           C_BEHIND="$(echo "$CMP" | jq -r '.[2]')"
@@ -86,13 +93,17 @@ jobs:
             exit 0
           fi
 
-          # Approval: for this private repo, any PR with clean mergeable_state and green checks is approved
-          # The complex Paperclip approval marker logic is removed (AUT-5887)
           echo "approve: PR meets merge criteria (clean, up-to-date, checks green)"
 
           if echo "$DATA" | jq -e '[.labels[].name] | index("hold") != null' >/dev/null; then echo "skip: 'hold' label set"; exit 0; fi
 
-          ROLLUP="$(gh api "repos/$REPO/pulls/$PR" --jq '[.statusCheckRollup[]?.conclusion] | all(. == "SUCCESS" or . == "SKIPPED" or . == "NEUTRAL")')"
+          ROLLUP="$(echo "$DATA" | jq '[.statusCheckRollup[]?.conclusion] | all(. == "SUCCESS" or . == "SKIPPED" or . == "NEUTRAL")')"
           if [ "$ROLLUP" != "true" ]; then echo "skip: status checks not green"; exit 0; fi
 
-          gh pr merge "$PR" --repo "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA" || echo "merge not performed (already merged, head moved, or transient conflict)"
+          MERGE_RESP="$(curl -sf -X PUT -H "$AUTH" -H "$ACCEPT" -H "Content-Type: application/json" "$API/pulls/$PR/merge" -d "{\"merge_method\":\"squash\",\"sha\":\"$HEAD_SHA\"}" || true)"
+          if echo "$MERGE_RESP" | jq -e '.merged' >/dev/null 2>&1; then
+            echo "merged: $(echo "$MERGE_RESP" | jq -r '.message // "success"')"
+            curl -sf -X DELETE -H "$AUTH" -H "$ACCEPT" "$API/git/refs/heads/$HEAD_REF" || echo "branch delete skipped (may already be gone)"
+          else
+            echo "merge not performed: $(echo "$MERGE_RESP" | jq -r '.message // "unknown error"')"
+          fi
