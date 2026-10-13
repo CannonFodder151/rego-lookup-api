@@ -60,8 +60,8 @@ jobs:
       - name: Clean workspace (docker root) + checkout
         run: |
           set -euo pipefail
-          docker run --rm -v "$PWD:/ws" -w /ws \
-            "$PYTHON_BASE_IMAGE" sh -c 'find /ws -mindepth 1 -maxdepth 1 ! -name ".git" -exec rm -rf {} + 2>/dev/null || true'
+          docker run --rm -v "$PWD:/ws" \
+            "$PYTHON_BASE_IMAGE" bash -c 'shopt -s dotglob; rm -rf /ws/* 2>/dev/null || true'
           git clone --depth 1 --branch ${{ github.head_ref }} https://x-access-token:${{ github.token }}@github.com/${{ github.repository }} .
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
         run: |
@@ -85,8 +85,8 @@ jobs:
       - name: Clean workspace (docker root) + checkout
         run: |
           set -euo pipefail
-          docker run --rm -v "$PWD:/ws" -w /ws \
-            "$PYTHON_BASE_IMAGE" sh -c 'find /ws -mindepth 1 -maxdepth 1 ! -name ".git" -exec rm -rf {} + 2>/dev/null || true'
+          docker run --rm -v "$PWD:/ws" \
+            "$PYTHON_BASE_IMAGE" bash -c 'shopt -s dotglob; rm -rf /ws/* 2>/dev/null || true'
           git clone --depth 1 --branch ${{ github.head_ref }} https://x-access-token:${{ github.token }}@github.com/${{ github.repository }} .
       - name: Strict-parse every workflow + assert the gate's own invariants
         run: |
@@ -107,8 +107,8 @@ jobs:
       - name: Clean workspace (docker root) + checkout
         run: |
           set -euo pipefail
-          docker run --rm -v "$PWD:/ws" -w /ws \
-            "$PYTHON_BASE_IMAGE" sh -c 'find /ws -mindepth 1 -maxdepth 1 ! -name ".git" -exec rm -rf {} + 2>/dev/null || true'
+          docker run --rm -v "$PWD:/ws" \
+            "$PYTHON_BASE_IMAGE" bash -c 'shopt -s dotglob; rm -rf /ws/* 2>/dev/null || true'
           git clone --depth 1 --branch ${{ github.head_ref }} https://x-access-token:${{ github.token }}@github.com/${{ github.repository }} .
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
         run: |
