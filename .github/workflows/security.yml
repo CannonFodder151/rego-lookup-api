@@ -51,6 +51,10 @@ env:
 jobs:
   pip-audit-pr:
     if: github.event_name == 'pull_request'
+    # AUT-5962: switched to self-hosted runner. GitHub-hosted ubuntu-latest
+    # runners were not scheduling jobs (0 steps, immediate failure) due to
+    # billing/spending limit. The container-based execution inside the pinned
+    # base image mitigates the memory pressure that caused OOM kills (AUT-4776).
     runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
@@ -74,14 +78,18 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
-      - name: Install pip via ensurepip
-        run: python3 -m ensurepip --upgrade
       - name: Strict-parse every workflow + assert the gate's own invariants
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet pyyaml
-          python3 tests/test_workflow_lint.py
-          python3 tests/test_security_scan_workflow.py
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/ws" -w /ws \
+            -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
+            -e PYTHONUSERBASE=/tmp/pip-user \
+            "$PYTHON_BASE_IMAGE" sh -c '
+              set -eu
+              pip install --user --quiet pyyaml
+              python3 tests/test_workflow_lint.py
+              python3 tests/test_security_scan_workflow.py
+            '
 
   image-scan:
     runs-on: [self-hosted, linux, x64]
@@ -117,11 +125,9 @@ jobs:
           else
             COLOR=0xED4245; TITLE="Base image scan found HIGH/CRITICAL CVEs"
           fi
-          for i in 1 2 3; do
-            curl -s -X POST https://n8n.nathanmartina.com/webhook/discord-report \
-              -H "Content-Type: application/json" \
-              -d "{\"channel\":\"status\",\"title\":\"$TITLE\",\"description\":\"trivy scan of digest-pinned python:3.13-slim base image (rego-lookup-api).\",\"color\":\"$COLOR\",\"author\":\"Security Scan\",\"fields\":[{\"name\":\"Image\",\"value\":\"python:3.13-slim\",\"inline\":true},{\"name\":\"Run\",\"value\":\"$RUN_URL\",\"inline\":true}]}" && break || sleep 5
-          done
+          curl -s -X POST https://n8n.nathanmartina.com/webhook/discord-report \
+            -H "Content-Type: application/json" \
+            -d "{\"channel\":\"status\",\"title\":\"$TITLE\",\"description\":\"trivy scan of digest-pinned python:3.13-slim base image (rego-lookup-api).\",\"color\":\"$COLOR\",\"author\":\"Security Scan\",\"fields\":[{\"name\":\"Image\",\"value\":\"python:3.13-slim\",\"inline\":true},{\"name\":\"Run\",\"value\":\"$RUN_URL\",\"inline\":true}]}"
 
   audit:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -144,10 +150,6 @@ jobs:
           TITLE: ${{ steps.audit.outputs.result == 'clean' && 'Dependency scan clean' || 'Dependency scan found known CVEs' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          PAYLOAD=$(jq -nc --arg c status --arg t "$TITLE" --arg col "$COLOR" --arg u "$RUN_URL" \
-            '{channel:$c,title:$t,description:"Weekly full-resolution pip-audit of rego-lookup-api requirements.",color:$col,author:"Security Scan",fields:[{name:"Scan",value:"full-resolution (transitive)",inline:true},{name:"Repo",value:"rego-lookup-api",inline:true},{name:"Run",value:$u,inline:true}]}')
-          for i in 1 2 3; do
-            curl -s -X POST https://n8n.nathanmartina.com/webhook/discord-report \
-              -H "Content-Type: application/json" \
-              -d "$PAYLOAD" && break || sleep 5
-          done
+          curl -s -X POST https://n8n.nathanmartina.com/webhook/discord-report \
+            -H "Content-Type: application/json" \
+            -d "$(jq -nc --arg c status --arg t \"$TITLE\" --arg col \"$COLOR\" --arg u \"$RUN_URL\" '{channel:$c,title:$t,description:"Weekly full-resolution pip-audit of rego-lookup-api requirements.",color:$col,author:"Security Scan",fields:[{name:"Scan",value:"full-resolution (transitive)",inline:true},{name:"Repo",value:"rego-lookup-api",inline:true},{name:"Run",value:$u,inline:true}]}')"
