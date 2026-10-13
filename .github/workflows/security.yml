@@ -77,7 +77,12 @@ jobs:
     name: Workflow lint — no duplicate mapping keys (AUT-4776)
     runs-on: [self-hosted, linux, x64]
     steps:
-      - uses: actions/checkout@v4
+      - name: Clean workspace + checkout
+        run: |
+          set -euo pipefail
+          rm -rf tests/__pycache__ 2>/dev/null || true
+          rm -rf .git 2>/dev/null || true
+          git clone --depth 1 --branch ${{ github.head_ref }} https://github.com/${{ github.repository }} .
       - name: Strict-parse every workflow + assert the gate's own invariants
         run: |
           set -euo pipefail
@@ -94,7 +99,12 @@ jobs:
   image-scan:
     runs-on: [self-hosted, linux, x64]
     steps:
-      - uses: actions/checkout@v4
+      - name: Clean workspace + checkout
+        run: |
+          set -euo pipefail
+          rm -rf tests/__pycache__ 2>/dev/null || true
+          rm -rf .git 2>/dev/null || true
+          git clone --depth 1 --branch ${{ github.head_ref }} https://github.com/${{ github.repository }} .
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
         run: |
           set -euo pipefail
