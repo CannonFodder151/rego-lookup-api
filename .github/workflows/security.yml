@@ -117,9 +117,11 @@ jobs:
           else
             COLOR=0xED4245; TITLE="Base image scan found HIGH/CRITICAL CVEs"
           fi
-          curl -s -X POST https://n8n.nathanmartina.com/webhook/discord-report \
-            -H "Content-Type: application/json" \
-            -d "{\"channel\":\"status\",\"title\":\"$TITLE\",\"description\":\"trivy scan of digest-pinned python:3.13-slim base image (rego-lookup-api).\",\"color\":\"$COLOR\",\"author\":\"Security Scan\",\"fields\":[{\"name\":\"Image\",\"value\":\"python:3.13-slim\",\"inline\":true},{\"name\":\"Run\",\"value\":\"$RUN_URL\",\"inline\":true}]}'
+          for i in 1 2 3; do
+            curl -s -X POST https://n8n.nathanmartina.com/webhook/discord-report \
+              -H "Content-Type: application/json" \
+              -d "{\"channel\":\"status\",\"title\":\"$TITLE\",\"description\":\"trivy scan of digest-pinned python:3.13-slim base image (rego-lookup-api).\",\"color\":\"$COLOR\",\"author\":\"Security Scan\",\"fields\":[{\"name\":\"Image\",\"value\":\"python:3.13-slim\",\"inline\":true},{\"name\":\"Run\",\"value\":\"$RUN_URL\",\"inline\":true}]}" && break || sleep 5
+          done
 
   audit:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -142,6 +144,10 @@ jobs:
           TITLE: ${{ steps.audit.outputs.result == 'clean' && 'Dependency scan clean' || 'Dependency scan found known CVEs' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          curl -s -X POST https://n8n.nathanmartina.com/webhook/discord-report \
-            -H "Content-Type: application/json" \
-            -d "$(jq -nc --arg c status --arg t \"$TITLE\" --arg col \"$COLOR\" --arg u \"$RUN_URL\" '{channel:$c,title:$t,description:"Weekly full-resolution pip-audit of rego-lookup-api requirements.",color:$col,author:"Security Scan",fields:[{name:"Scan",value:"full-resolution (transitive)",inline:true},{name:"Repo",value:"rego-lookup-api",inline:true},{name:"Run",value:$u,inline:true}]}')"
+          PAYLOAD=$(jq -nc --arg c status --arg t "$TITLE" --arg col "$COLOR" --arg u "$RUN_URL" \
+            '{channel:$c,title:$t,description:"Weekly full-resolution pip-audit of rego-lookup-api requirements.",color:$col,author:"Security Scan",fields:[{name:"Scan",value:"full-resolution (transitive)",inline:true},{name:"Repo",value:"rego-lookup-api",inline:true},{name:"Run",value:$u,inline:true}]}')
+          for i in 1 2 3; do
+            curl -s -X POST https://n8n.nathanmartina.com/webhook/discord-report \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD" && break || sleep 5
+          done
