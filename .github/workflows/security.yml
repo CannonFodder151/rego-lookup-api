@@ -57,12 +57,7 @@ jobs:
     # base image mitigates the memory pressure that caused OOM kills (AUT-4776).
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Clean workspace (docker root) + checkout
-        run: |
-          set -euo pipefail
-          docker run --rm -v "$PWD:/ws" \
-            "$PYTHON_BASE_IMAGE" bash -c 'shopt -s dotglob; rm -rf /ws/* 2>/dev/null || true'
-          git clone --depth 1 --branch ${{ github.head_ref }} https://x-access-token:${{ github.token }}@github.com/${{ github.repository }} .
+      - uses: actions/checkout@v4
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
         run: |
           set -euo pipefail
@@ -82,12 +77,7 @@ jobs:
     name: Workflow lint — no duplicate mapping keys (AUT-4776)
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Clean workspace (docker root) + checkout
-        run: |
-          set -euo pipefail
-          docker run --rm -v "$PWD:/ws" \
-            "$PYTHON_BASE_IMAGE" bash -c 'shopt -s dotglob; rm -rf /ws/* 2>/dev/null || true'
-          git clone --depth 1 --branch ${{ github.head_ref }} https://x-access-token:${{ github.token }}@github.com/${{ github.repository }} .
+      - uses: actions/checkout@v4
       - name: Strict-parse every workflow + assert the gate's own invariants
         run: |
           set -euo pipefail
@@ -104,12 +94,7 @@ jobs:
   image-scan:
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Clean workspace (docker root) + checkout
-        run: |
-          set -euo pipefail
-          docker run --rm -v "$PWD:/ws" \
-            "$PYTHON_BASE_IMAGE" bash -c 'shopt -s dotglob; rm -rf /ws/* 2>/dev/null || true'
-          git clone --depth 1 --branch ${{ github.head_ref }} https://x-access-token:${{ github.token }}@github.com/${{ github.repository }} .
+      - uses: actions/checkout@v4
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
         run: |
           set -euo pipefail
