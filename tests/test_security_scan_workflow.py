@@ -169,6 +169,20 @@ class SecurityScanWorkflowTest(unittest.TestCase):
         self.assertIn(runs_on, acceptable,
             f"pip-audit-pr runs-on must be ubuntu-latest or self-hosted: {runs_on}")
 
+    def test_workflow_lint_runs_in_container(self):
+        # workflow-lint must run inside the pinned base image container
+        # because the self-hosted runner's system python lacks ensurepip
+        job = self.wf["jobs"]["workflow-lint"]
+        script = "\n".join(s.get("run", "") for s in job["steps"])
+        self.assertIn("docker run", script, "workflow-lint must run in the pinned image")
+        self.assertIn("$PYTHON_BASE_IMAGE", script)
+        self.assertNotIn("ensurepip", script, "ensurepip must not be used on host")
+        # pyyaml and tests must run inside the container
+        self.assertIn("pip install --quiet pyyaml", script)
+        self.assertIn("python3 tests/test_workflow_lint.py", script)
+        self.assertIn("python3 tests/test_security_scan_workflow.py", script)
+
+
 class CveFloorPinTest(unittest.TestCase):
     """AUT-4780: known-CVE packages must carry a version floor in
     requirements.txt.
