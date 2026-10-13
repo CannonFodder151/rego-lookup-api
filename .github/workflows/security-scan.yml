@@ -57,7 +57,11 @@ jobs:
     # base image mitigates the memory pressure that caused OOM kills (AUT-4776).
     runs-on: [self-hosted, linux, x64]
     steps:
-      - uses: actions/checkout@v4
+      - name: Clean workspace + checkout
+        run: |
+          set -euo pipefail
+          rm -rf tests/__pycache__ .git * .[^.]* 2>/dev/null || true
+          git clone --depth 1 --branch ${{ github.head_ref }} https://github.com/${{ github.repository }} .
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
         run: |
           set -euo pipefail
