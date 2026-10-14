@@ -60,7 +60,11 @@ env:
   # pip-audit HIGH/CRITICALs found in the deployed :hosted image (openssl,
   # pcre2, urllib3 clusters). The new digest carries deb13u2+ fixes for the
   # previously flagged packages.
-  PYTHON_BASE_IMAGE: 'python:3.13-slim@sha256:bf44cdfcb76cd3b41e879bc058fc37ec5872002ccfde7fcb765e218cde0cd79c'
+  #
+  # AUT-6283: bumped to 2026-10-09 index digest (sha256:70729b46...) to clear
+  # pip-audit HIGH/CRITICALs found in the deployed :hosted image (base image
+  # security updates).
+  PYTHON_BASE_IMAGE: 'python:3.13-slim@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f'
 
 jobs:
   # PR-time gate for the *resolved* python dependency tree. Mirrors the
@@ -70,11 +74,16 @@ jobs:
   # is caught on every PR instead of only on the weekly schedule below.
   pip-audit-pr:
     if: github.event_name == 'pull_request'
-    # AUT-5962: switched to self-hosted runner. GitHub-hosted ubuntu-latest
-    # runners were not scheduling jobs (0 steps, immediate failure).
+    # AUT-5962: GitHub-hosted ubuntu-latest runners were not scheduling jobs
+    # (0 steps, immediate failure). Use self-hosted runner which has capacity.
     runs-on: [self-hosted, linux, x64]
     steps:
+      - name: Clean workspace via docker (root)
+        run: |
+          docker run --rm -v "$PWD":/workspace -w /workspace alpine:3.20 sh -c 'rm -rf /workspace/* /workspace/.[^.]* 2>/dev/null || true'
       - uses: actions/checkout@v4
+        with:
+          clean: false
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
         run: |
           set -euo pipefail
@@ -108,25 +117,36 @@ jobs:
     name: Workflow lint — no duplicate mapping keys (AUT-4776)
     runs-on: [self-hosted, linux, x64]
     steps:
+      - name: Clean workspace via docker (root)
+        run: |
+          docker run --rm -v "$PWD":/workspace -w /workspace alpine:3.20 sh -c 'rm -rf /workspace/* /workspace/.[^.]* 2>/dev/null || true'
       - uses: actions/checkout@v4
-      - name: Install python3-venv and create venv for pyyaml
+        with:
+          clean: false
+      - name: Run workflow lint tests in docker (AUT-4776)
         run: |
           set -euo pipefail
-          apt-get update && apt-get install -y python3-venv
-          python3 -m venv .venv
-          . .venv/bin/activate
-          pip install --quiet pyyaml
-      - name: Strict-parse every workflow + assert the gate's own invariants
-        run: |
-          set -euo pipefail
-          . .venv/bin/activate
-          python3 tests/test_workflow_lint.py
-          python3 tests/test_security_scan_workflow.py
+          docker run --rm -v "$PWD:/ws" -w /ws \
+            "$PYTHON_BASE_IMAGE" sh -c '
+              set -eu
+              python3 -m venv /tmp/venv
+              . /tmp/venv/bin/activate
+              pip install --quiet --upgrade pip
+              pip install --quiet pyyaml
+              python3 tests/test_workflow_lint.py
+              python3 tests/test_security_scan_workflow.py
+            '
 
   image-scan:
+    # AUT-5962: ubuntu-latest jobs were not scheduling (0 steps). Use self-hosted.
     runs-on: [self-hosted, linux, x64]
     steps:
+      - name: Clean workspace via docker (root)
+        run: |
+          docker run --rm -v "$PWD":/workspace -w /workspace alpine:3.20 sh -c 'rm -rf /workspace/* /workspace/.[^.]* 2>/dev/null || true'
       - uses: actions/checkout@v4
+        with:
+          clean: false
 
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
         run: |
