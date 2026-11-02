@@ -158,13 +158,11 @@ class SecurityScanWorkflowTest(unittest.TestCase):
         audit_idx = next(i for i, l in enumerate(lines) if l.strip() == "pip-audit")
         self.assertLess(install_idx, audit_idx, "install pip-audit before invoking it")
 
-    def test_pip_audit_runs_off_the_memory_constrained_self_hosted_vm(self):
-        # First live run of the repaired gate: building the resolved tree inside
-        # the container OOM-killed the self-hosted rego VM (exit 137, "Killed"),
-        # which reads exactly like a CVE failure. The audit is memory-hungry and
-        # gains nothing from an arch-specific self-hosted runner.
+    def test_pip_audit_runs_on_self_hosted_runner(self):
+        # AUT-5962: ubuntu-latest runners were not scheduling jobs (0 steps,
+        # immediate failure). The self-hosted runner has capacity and works.
         runs_on = self.wf["jobs"]["pip-audit-pr"]["runs-on"]
-        self.assertEqual(runs_on, "ubuntu-latest", f"pip-audit-pr must not self-host: {runs_on}")
+        self.assertEqual(runs_on, ["self-hosted", "linux", "x64"], f"pip-audit-pr must use self-hosted: {runs_on}")
 
 
 class CveFloorPinTest(unittest.TestCase):
