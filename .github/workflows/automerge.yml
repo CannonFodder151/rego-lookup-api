@@ -10,6 +10,7 @@ name: automerge
 # runs the workflow file from the PR head, so this is the same trust
 # consideration as the website repo's equivalent job, where Security review is
 # recorded on AUT-5654.
+# AUT-6109: Replaced gh CLI with curl + GITHUB_TOKEN (gh not installed on runner)
 on:
   pull_request_review:
     types: [submitted]
@@ -45,6 +46,8 @@ jobs:
           set -uo pipefail
           REPO="${{ github.repository }}"
           PR=""
+          API="https://api.github.com"
+          AUTH="Authorization: token $GITHUB_TOKEN"
           case "$EVENT_NAME" in
             issue_comment)
               # approval markers are PR comments; plain issue comments are ignored
@@ -54,7 +57,8 @@ jobs:
               PR="$EVENT_PULL_REQUEST"
               ;;
             *)
-              PR="$(gh api "repos/$REPO/commits/$EVENT_SHA/pulls" --jq '.[0].number // empty' || true)"
+              # gh api "repos/$REPO/commits/$EVENT_SHA/pulls" --jq '.[0].number // empty'
+              PR=$(curl -s -H "$AUTH" "$API/repos/$REPO/commits/$EVENT_SHA/pulls" | jq -r '.[0].number // empty') || PR=""
               ;;
           esac
           echo "pr=$PR" >> "$GITHUB_OUTPUT"
@@ -67,20 +71,28 @@ jobs:
           set -uo pipefail
           REPO="${{ github.repository }}"
           PR="${{ steps.pr.outputs.pr }}"
-          DEFAULT="$(gh api "repos/$REPO" --jq '.default_branch')"
-          DATA="$(gh api "repos/$REPO/pulls/$PR")"
+          API="https://api.github.com"
+          AUTH="Authorization: token $GITHUB_TOKEN"
+          ACCEPT="Accept: application/vnd.github+json"
 
-          BASE="$(echo "$DATA" | jq -r '.base.ref')"
+          # gh api "repos/$REPO" --jq '.default_branch'
+          DEFAULT=$(curl -s -H "$AUTH" -H "$ACCEPT" "$API/repos/$REPO" | jq -r '.default_branch')
+
+          # gh api "repos/$REPO/pulls/$PR"
+          DATA=$(curl -s -H "$AUTH" -H "$ACCEPT" "$API/repos/$REPO/pulls/$PR")
+
+          BASE=$(echo "$DATA" | jq -r '.base.ref')
           if [ "$BASE" != "$DEFAULT" ]; then echo "skip: base '$BASE' is not '$DEFAULT'"; exit 0; fi
           if [ "$(echo "$DATA" | jq '.draft')" = "true" ]; then echo "skip: draft PR"; exit 0; fi
-          STATE="$(echo "$DATA" | jq -r '.mergeable_state')"
+          STATE=$(echo "$DATA" | jq -r '.mergeable_state')
           if [ "$STATE" != "clean" ]; then echo "skip: mergeable_state=$STATE"; exit 0; fi
 
-          HEAD_SHA="$(echo "$DATA" | jq -r '.head.sha')"
-          CMP="$(gh api "repos/$REPO/compare/$DEFAULT...$HEAD_SHA" --jq '[.status, .ahead_by, .behind_by]')"
-          C_STATUS="$(echo "$CMP" | jq -r '.[0]')"
-          C_AHEAD="$(echo "$CMP" | jq -r '.[1]')"
-          C_BEHIND="$(echo "$CMP" | jq -r '.[2]')"
+          HEAD_SHA=$(echo "$DATA" | jq -r '.head.sha')
+          # gh api "repos/$REPO/compare/$DEFAULT...$HEAD_SHA" --jq '[.status, .ahead_by, .behind_by]'
+          CMP=$(curl -s -H "$AUTH" -H "$ACCEPT" "$API/repos/$REPO/compare/$DEFAULT...$HEAD_SHA" | jq '[.status, .ahead_by, .behind_by]')
+          C_STATUS=$(echo "$CMP" | jq -r '.[0]')
+          C_AHEAD=$(echo "$CMP" | jq -r '.[1]')
+          C_BEHIND=$(echo "$CMP" | jq -r '.[2]')
           if [ "$C_STATUS" != "ahead" ]; then
             echo "skip: head $HEAD_SHA is not based on current $DEFAULT (compare status=$C_STATUS ahead_by=$C_AHEAD behind_by=$C_BEHIND) — merge $DEFAULT into the head branch first"
             exit 0
@@ -92,7 +104,17 @@ jobs:
 
           if echo "$DATA" | jq -e '[.labels[].name] | index("hold") != null' >/dev/null; then echo "skip: 'hold' label set"; exit 0; fi
 
-          ROLLUP="$(gh api "repos/$REPO/pulls/$PR" --jq '[.statusCheckRollup[]?.conclusion] | all(. == "SUCCESS" or . == "SKIPPED" or . == "NEUTRAL")')"
+          # gh api "repos/$REPO/pulls/$PR" --jq '[.statusCheckRollup[]?.conclusion] | all(. == "SUCCESS" or . == "SKIPPED" or . == "NEUTRAL")'
+          ROLLUP=$(curl -s -H "$AUTH" -H "$ACCEPT" "$API/repos/$REPO/pulls/$PR" | jq '[.statusCheckRollup[]?.conclusion] | all(. == "SUCCESS" or . == "SKIPPED" or . == "NEUTRAL")')
           if [ "$ROLLUP" != "true" ]; then echo "skip: status checks not green"; exit 0; fi
 
-          gh pr merge "$PR" --repo "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA" || echo "merge not performed (already merged, head moved, or transient conflict)"
+          # gh pr merge "$PR" --repo "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA"
+          # Use GitHub REST API to merge
+          MERGE_RESPONSE=$(curl -s -X PUT -H "$AUTH" -H "$ACCEPT" \
+            -d '{"commit_title":"Auto-merge PR #'"$PR"'","merge_method":"squash","sha":"'"$HEAD_SHA"'"}' \
+            "$API/repos/$REPO/pulls/$PR/merge")
+          if echo "$MERGE_RESPONSE" | jq -e '.merged' >/dev/null; then
+            echo "merged: $(echo "$MERGE_RESPONSE" | jq -r '.sha')"
+          else
+            echo "merge not performed (already merged, head moved, or transient conflict): $(echo "$MERGE_RESPONSE" | jq -r '.message // .documentation_url // "unknown"')"
+          fi
