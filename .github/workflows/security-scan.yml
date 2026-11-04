@@ -154,7 +154,7 @@ jobs:
           # Anchor on `FROM` and allow the `--platform=` prefix the Dockerfile
           # actually uses. The old `FROM python:[0-9]` pattern matched nothing,
           # so the guard passed vacuously and enforced nothing (AUT-4776).
-          FLOATING="$(grep -nE '^FROM .*python:[0-9]' Dockerfile | grep -v '@sha256' || true)"
+          FLOATING="$(grep -nE '^FROM .*python:[0-9].*' Dockerfile | grep -v '@sha256' || true)"
           if [ -n "$FLOATING" ]; then
             echo "::error::floating python base image detected (missing @sha256 digest):"
             printf '%s\n' "$FLOATING"
