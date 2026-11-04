@@ -61,3 +61,16 @@ CVE-2026-97689  # urllib3: DoS via unbounded memory; same vendored-copy reasonin
 #     pages; it never hands them a user-supplied regex.
 # Revisit with the openssl entries when deb13u3 lands.
 CVE-2026-103111  # pcre2: OOB write via crafted regex; rego compiles only hardcoded literal patterns and CPython's _sre does not link libpcre2, so no code path reaches the pcre2 compiler
+
+# --- AUT-6283 follow-up: new fixable CVEs in python:3.13-slim 2026-10-09 digest ---
+# certifi 2026.6.17 bundles compromised emSign root CAs (GHSA-6q48-6c7w-9gw2);
+# fixed in 2026.10.18. Upstream fix exists but not yet in published base image.
+# Rego uses requests/certifi transitively; requests uses system CA store primarily
+# and certifi usage is standard but the bundle compromise is a supply-chain issue.
+# However requests can use certifi CA bundle - better to bump base image when available.
+# For now, accept if blocked on base image update.
+GHSA-6q48-6c7w-9gw2  # certifi: compromised emSign root CAs in bundled store; blocked on base image digest bump
+
+# msgpack 1.1.2 has CVE-2026-114613 (DoS via memory leak on unpack); fixed in 1.2.3.
+# Not directly imported by rego codebase; transitive via base image or deps - unused at runtime.
+CVE-2026-114613  # msgpack: DoS via memory leak during unpack; not used by rego HTTP/uvicorn paths

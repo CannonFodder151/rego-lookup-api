@@ -204,7 +204,7 @@ jobs:
           set -euo pipefail
           docker pull cannonfodder151/rego-lookup-api:hosted
           docker run --rm cannonfodder151/rego-lookup-api:hosted \
-            sh -c "pip install --quiet pip-audit && pip-audit" \
+            sh -c "pip install --quiet pip-audit && python3 -m pip_audit" \
             || { echo "result=found" >> "$GITHUB_OUTPUT"; exit 1; }
           echo "result=clean" >> "$GITHUB_OUTPUT"
 
