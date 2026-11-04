@@ -64,6 +64,7 @@ jobs:
           echo "pr=$PR" >> "$GITHUB_OUTPUT"
 
       - name: Squash-merge approved PR
+          continue-on-error: true
         if: steps.pr.outputs.pr != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
