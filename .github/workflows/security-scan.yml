@@ -192,6 +192,12 @@ jobs:
           done
 
   audit:
+    # AUT-257: the `:hosted` runtime image does not ship pip-audit (it is not in
+    # requirements.txt and the Dockerfile never installs it), so the old
+    # `pip-audit` invocation inside the container exited 127 "sh: pip-audit: not
+    # found" on every scheduled run (rego-lookup-api#102). Install into --user
+    # site-packages inside the container and invoke as a module so a missing
+    # install fails loudly instead of reading as a CVE false-negative.
     # Full-resolution pip-audit of the *deployed* image. Runs only on
     # schedule/workflow_dispatch (the `:hosted` tag is published by auto-deploy),
     # so it never races a `push` build and is skipped on pull_request.
@@ -204,7 +210,7 @@ jobs:
           set -euo pipefail
           docker pull cannonfodder151/rego-lookup-api:hosted
           docker run --rm cannonfodder151/rego-lookup-api:hosted \
-            sh -c "pip install --quiet pip-audit && pip-audit" \
+            sh -c "pip install --quiet --user pip-audit && python -m pip_audit" \
             || { echo "result=found" >> "$GITHUB_OUTPUT"; exit 1; }
           echo "result=clean" >> "$GITHUB_OUTPUT"
 

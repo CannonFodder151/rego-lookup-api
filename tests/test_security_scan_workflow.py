@@ -164,6 +164,25 @@ class SecurityScanWorkflowTest(unittest.TestCase):
         runs_on = self.wf["jobs"]["pip-audit-pr"]["runs-on"]
         self.assertEqual(runs_on, ["self-hosted", "linux", "x64"], f"pip-audit-pr must use self-hosted: {runs_on}")
 
+    def test_audit_job_installs_pip_audit_before_invoking(self):
+        # AUT-257: the `audit` job ran `pip-audit` directly inside the
+        # cannonfodder151/rego-lookup-api:hosted image, but pip-audit was never
+        # installed into that image (not in requirements.txt, not in Dockerfile),
+        # so the job exited 127 "sh: pip-audit: not found" on every scheduled
+        # run (issue #102). The fix installs pip-audit into --user site-packages
+        # inside the container and invokes it as a module so a missing install
+        # still fails loudly instead of reading as a CVE false-negative.
+        job = self.wf["jobs"]["audit"]
+        script = "\n".join(s.get("run", "") for s in job["steps"])
+        self.assertIn("pip install --quiet --user pip-audit", script,
+                      "audit job must install pip-audit before running it")
+        self.assertIn("python -m pip_audit", script,
+                      "audit job must invoke pip-audit as a module")
+        install_pos = script.find("pip install --quiet --user pip-audit")
+        audit_pos = script.find("python -m pip_audit")
+        self.assertLess(install_pos, audit_pos,
+                        "install pip-audit before invoking it")
+
 
 class CveFloorPinTest(unittest.TestCase):
     """AUT-4780: known-CVE packages must carry a version floor in
