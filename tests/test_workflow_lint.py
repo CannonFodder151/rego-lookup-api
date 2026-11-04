@@ -7,11 +7,15 @@ This covers every workflow in the repo, not just security-scan.yml.
 Run: python3 tests/test_workflow_lint.py
 """
 
+import sys
 import unittest
 from pathlib import Path
 
 import yaml
 
+# Ensure sibling test modules are importable regardless of how this file is
+# invoked (direct execution, `python -m unittest <path>`, or test runner).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_security_scan_workflow import StrictLoader
 
 REPO = Path(__file__).resolve().parent.parent

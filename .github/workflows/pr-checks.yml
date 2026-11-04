@@ -17,6 +17,6 @@ jobs:
       - name: Build
         run: npm run build --if-present || true
       - name: Workflow lint
-        run: python3 -m unittest -v tests/test_workflow_lint.py
+        run: python3 tests/test_workflow_lint.py
       - name: Test
         run: npm test --if-present || true
