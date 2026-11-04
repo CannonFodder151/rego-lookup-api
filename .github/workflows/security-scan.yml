@@ -78,12 +78,14 @@ jobs:
     # (0 steps, immediate failure). Use self-hosted runner which has capacity.
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Clean workspace via docker (root)
+      - name: Clean workspace
         run: |
-          docker run --rm -v "$PWD":/workspace -w /workspace alpine:3.20 sh -c 'rm -rf /workspace/* /workspace/.[^.]* 2>/dev/null || true'
+          sudo rm -rf ./* ./.[!.]* ./..?* __pycache__ .pytest_cache 2>/dev/null || true
+          find . -name "*.pyc" -delete 2>/dev/null || true
+          find . -name "__pycache__" -type d -empty -delete 2>/dev/null || true
       - uses: actions/checkout@v4
         with:
-          clean: false
+          clean: true
       - name: Resolved-tree pip-audit — fail on transitive CVEs (AUT-1189)
         run: |
           set -euo pipefail
@@ -117,12 +119,14 @@ jobs:
     name: Workflow lint — no duplicate mapping keys (AUT-4776)
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Clean workspace via docker (root)
+      - name: Clean workspace
         run: |
-          docker run --rm -v "$PWD":/workspace -w /workspace alpine:3.20 sh -c 'rm -rf /workspace/* /workspace/.[^.]* 2>/dev/null || true'
+          sudo rm -rf ./* ./.[!.]* ./..?* __pycache__ .pytest_cache 2>/dev/null || true
+          find . -name "*.pyc" -delete 2>/dev/null || true
+          find . -name "__pycache__" -type d -empty -delete 2>/dev/null || true
       - uses: actions/checkout@v4
         with:
-          clean: false
+          clean: true
       - name: Run workflow lint tests in docker (AUT-4776)
         run: |
           set -euo pipefail
@@ -141,12 +145,14 @@ jobs:
     # AUT-5962: ubuntu-latest jobs were not scheduling (0 steps). Use self-hosted.
     runs-on: [self-hosted, linux, x64]
     steps:
-      - name: Clean workspace via docker (root)
+      - name: Clean workspace
         run: |
-          docker run --rm -v "$PWD":/workspace -w /workspace alpine:3.20 sh -c 'rm -rf /workspace/* /workspace/.[^.]* 2>/dev/null || true'
+          sudo rm -rf ./* ./.[!.]* ./..?* __pycache__ .pytest_cache 2>/dev/null || true
+          find . -name "*.pyc" -delete 2>/dev/null || true
+          find . -name "__pycache__" -type d -empty -delete 2>/dev/null || true
       - uses: actions/checkout@v4
         with:
-          clean: false
+          clean: true
 
       - name: Pin guard — python base image must be digest-pinned (AUT-1735)
         run: |
@@ -198,6 +204,14 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, linux, x64]
     steps:
+      - name: Clean workspace
+        run: |
+          sudo rm -rf ./* ./.[!.]* ./..?* __pycache__ .pytest_cache 2>/dev/null || true
+          find . -name "*.pyc" -delete 2>/dev/null || true
+          find . -name "__pycache__" -type d -empty -delete 2>/dev/null || true
+      - uses: actions/checkout@v4
+        with:
+          clean: true
       - name: Fail on known vulns in the deployed image
         id: audit
         run: |
