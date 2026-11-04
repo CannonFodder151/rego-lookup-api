@@ -9,7 +9,7 @@ playwright==1.62.0
 playwright-stealth==2.0.3
 selenium==4.47.0
 undetected-chromedriver==3.5.5
-setuptools==84.0.0
+setuptools>=84.2.1  # GHSA-xmj3-9gf7-h52w (CVE in 84.0.0; latest is 84.2.1)
 
 # AUT-1189: transitive floor pins for known-CVE packages. Without these,
 # image builds can resolve to older vulnerable versions if an upstream
@@ -22,7 +22,9 @@ pygments>=2.20        # PYSEC-2023-117 + PYSEC-2026-2987 (CVEs 2.x<2.20)
 # buffered by HTTPResponse.stream()/read_chunked()). Both are fixed in 2.8.0.
 # rego calls requests over untrusted upstream HTML, so 97689's unbounded read
 # is reachable; 97687 matters whenever a proxy env var is set in the runtime.
-urllib3>=2.8.0        # CVE-2026-97687 + CVE-2026-97689 (CVEs 1.26.0-2.7.x)
+urllib3>=2.8.1  # PYSEC-2026-4175/4176/4177 (CVEs in 2.7.x; floor raised past 2.8.0)
+certifi!=2026.7.22  # PYSEC-2026-4320 (block vulnerable 2026.7.22)
+msgpack<1.2.3  # block vulnerable msgpack version        # CVE-2026-97687 + CVE-2026-97689 (CVEs 1.26.0-2.7.x)
 # pycryptodome is not pulled in by the rego-lookup-api tree; floor left out
 # of this file intentionally (pip-audit direct-deps pass would reject a
 # non-resolved >= pin).
