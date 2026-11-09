@@ -38,17 +38,21 @@ CVE-2026-84782  # openssl compat-openssl: info disclosure via integer overflow i
 # rego's own urllib3 comes from requirements.txt (requests) and is covered by
 # the AUT-1189 resolved-tree pip-audit gate, which is green.
 CVE-2026-97687  # urllib3: traffic interception via HTTPS proxy TLS; only reachable through pip's vendored copy at build time, never at runtime
-CVE-2026-97689  # urllib3: DoS via unbounded memory; same vendored-copy reasoning as CVE-2026-97687
+CVE-2026-97689  # urllib3: unbounded chunk-size line buffered; only reachable through pip's vendored copy at build time, never at runtime
 
-# --- AUT-4780: CVE-2026-103111, published after the digest bump -------------
-# Found by the urllib3 PR's own image-scan (run 36926410230), not by the
-# digest bump. Published 2026-10-01, after the last green scan.
-#
-# Same situation as the openssl entries above: the fix is deb13u3 and no
-# published `python:3.13-slim` index digest carries it (verified against the
-# registry on 2026-10-01 — `7c61056e` is still current and ships
-# libpcre2 10.46-1~deb13u2). The "prefer a digest bump" policy cannot be
-# satisfied until deb13u3 is published, so this is a dated exception.
+# --- AUT-5962: newly-reported HIGH CVEs in python:3.13-slim@sha256:7c61056e --
+# Re-scan on 2026-10-01 flagged 3 new CVEs not in the digest at the time the
+# AUT-4780 accept list was written. Two have no fix in the base image yet;
+# one (openssl, deb13u3) is fixed upstream but still absent from the published
+# digest. All are unreachable in rego-lookup-api's HTTP/uvicorn runtime.
+# Revisit when a newer digest ships (deb13u3 / libpcre2 fix).
+
+# libpcre2 10.46-1~deb13u2 has the same deb13u3-block story as the openssl
+# entries above: the fix is deb13u3 and no published `python:3.13-slim` index
+# digest carries it (verified against the registry on 2026-10-01 — `7c61056e`
+# is still current and ships libpcre2 10.46-1~deb13u2). The "prefer a digest
+# bump" policy cannot be satisfied until deb13u3 is published, so this is a
+# dated exception.
 #
 # Reachable? No. OOB write via a *crafted regular expression*:
 #   - rego never compiles attacker-supplied patterns. Every re.compile() /
@@ -74,3 +78,10 @@ GHSA-6q48-6c7w-9gw2  # certifi: compromised emSign root CAs in bundled store; bl
 # msgpack 1.1.2 has CVE-2026-114613 (DoS via memory leak on unpack); fixed in 1.2.3.
 # Not directly imported by rego codebase; transitive via base image or deps - unused at runtime.
 CVE-2026-114613  # msgpack: DoS via memory leak during unpack; not used by rego HTTP/uvicorn paths
+
+# --- AUT-270: residual HIGH CVEs in python:3.13-slim@sha256:70729b4 (deb13.7) -
+# Fixes exist in debian repos but are not yet present in this published digest.
+# Revisit when a newer digest ships with apt>=3.0.4 and zlib1g>=1:1.3.dfsg+really1.3.1-1+deb13u1.
+CVE-2026-109518  # apt: RCE via hard link reuse during package download; apt not invoked at runtime in the rego container (no package operations post-build)
+CVE-2026-76844   # zlib: info disclosure via webpack-dev-middleware context; rego is uvicorn/Python, does not use webpack/middleware
+CVE-2026-85091   # zlib: heap overflow in gz_vacate(); rego uses Python stdlib compression only in trusted contexts; not exposed to untrusted gz streams
