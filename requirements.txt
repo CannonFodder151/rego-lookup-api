@@ -9,7 +9,7 @@ playwright==1.62.0
 playwright-stealth==2.0.3
 selenium==4.47.0
 undetected-chromedriver==3.5.5
-setuptools==84.0.0
+setuptools>=84.1.0
 
 # AUT-1189: transitive floor pins for known-CVE packages. Without these,
 # image builds can resolve to older vulnerable versions if an upstream
@@ -29,13 +29,11 @@ urllib3>=2.8.0        # CVE-2026-97687 + CVE-2026-97689 (CVEs 1.26.0-2.7.x)
 
 # AUT-6313: transitive floor pins for known-CVE packages found in the
 # deployed :hosted image by the weekly pip-audit scan.
-# ecdsa>=0.20.0 removed: version does not exist yet (latest 0.19.2); unsatisfiable
-# pin breaks `pip install -r requirements.txt` entirely, blocking the pip-audit gate.
-# CVE PYSEC-2026-1325 remains tracked for re-pin when 0.20.0 is released.
+# ecdsa pin removed (unsatisfiable) – commented out to allow install.
+# CVE PYSEC-2026-1325 pending future release.
 jinja2>=3.1.6          # PYSEC-2026-1471/1472/1475 (CVEs 3.1.x<3.1.6)
 pyjwt>=2.15.0          # PYSEC-2026-4140..4183 (CVEs 2.13.x)
 pypdf>=6.19.0          # PYSEC-2026-4153..4160 (CVEs 6.16.x)
-# python-jose>=3.6.0 removed: version does not exist yet (latest 3.5.0); unsatisfiable
-# pin breaks `pip install -r requirements.txt` entirely, blocking the pip-audit gate.
-# CVE-2026-85394 remains tracked for re-pin when 3.6.0 is released.
+# python-jose pin removed (unsatisfiable) – commented out to allow install.
+# CVE-2026-85394 pending future release.
 virtualenv>=21.7.13    # PYSEC-2026-4011..4014 (CVEs 21.7.x)
