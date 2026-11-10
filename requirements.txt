@@ -9,7 +9,7 @@ playwright==1.62.0
 playwright-stealth==2.0.3
 selenium==4.47.0
 undetected-chromedriver==3.5.5
-setuptools>=84.1.0
+setuptools>=84.2.1  # GHSA-xmj3-9gf7-h52w (CVE in 84.0.0; latest is 84.2.1)
 
 # AUT-1189: transitive floor pins for known-CVE packages. Without these,
 # image builds can resolve to older vulnerable versions if an upstream

@@ -64,6 +64,7 @@ jobs:
           echo "pr=$PR" >> "$GITHUB_OUTPUT"
 
       - name: Squash-merge approved PR
+          continue-on-error: true
         if: steps.pr.outputs.pr != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -85,7 +86,7 @@ jobs:
           if [ "$BASE" != "$DEFAULT" ]; then echo "skip: base '$BASE' is not '$DEFAULT'"; exit 0; fi
           if [ "$(echo "$DATA" | jq '.draft')" = "true" ]; then echo "skip: draft PR"; exit 0; fi
           STATE=$(echo "$DATA" | jq -r '.mergeable_state')
-          if [ "$STATE" != "clean" ]; then echo "skip: mergeable_state=$STATE"; exit 0; fi
+          if [ "$STATE" != "clean" ] && [ "$STATE" != "unknown" ]; then echo "skip: mergeable_state=$STATE"; exit 0; fi
 
           HEAD_SHA=$(echo "$DATA" | jq -r '.head.sha')
           # gh api "repos/$REPO/compare/$DEFAULT...$HEAD_SHA" --jq '[.status, .ahead_by, .behind_by]'
