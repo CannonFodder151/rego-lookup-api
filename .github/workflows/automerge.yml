@@ -31,12 +31,9 @@ permissions:
 
 jobs:
   automerge:
-    if: github.event_name != 'check_run' || github.event.check_run.name != 'automerge'
-    # AUT-262: the `status:` trigger fires on every push (status updates),
-    # which made the job run on push events with no PR to merge and fail the
-    # workflow load. Status events are redundant — check_run already covers
-    # completed checks — so skip them entirely.
-    if: github.event_name != 'status'
+    # AUT-262: skip status events (push fires them, no PR to merge) and
+    # skip check_run events for the automerge job itself (self-trigger loop).
+    if: github.event_name != 'status' && (github.event_name != 'check_run' || github.event.check_run.name != 'automerge')
     runs-on: [self-hosted, Linux, X64]
     steps:
       - name: Resolve pull request
