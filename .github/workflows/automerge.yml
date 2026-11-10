@@ -32,6 +32,11 @@ permissions:
 jobs:
   automerge:
     if: github.event_name != 'check_run' || github.event.check_run.name != 'automerge'
+    # AUT-262: the `status:` trigger fires on every push (status updates),
+    # which made the job run on push events with no PR to merge and fail the
+    # workflow load. Status events are redundant — check_run already covers
+    # completed checks — so skip them entirely.
+    if: github.event_name != 'status'
     runs-on: [self-hosted, Linux, X64]
     steps:
       - name: Resolve pull request
@@ -64,7 +69,7 @@ jobs:
           echo "pr=$PR" >> "$GITHUB_OUTPUT"
 
       - name: Squash-merge approved PR
-          continue-on-error: true
+        continue-on-error: true
         if: steps.pr.outputs.pr != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
